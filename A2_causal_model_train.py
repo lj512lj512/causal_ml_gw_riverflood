@@ -367,6 +367,7 @@ if __name__ == "__main__":
                            "event_precip_mm", 
                            "max_1d_precip_mm", 
                            "split_from_long_event", 
+                           'pre_event_precip_3d', 
                            "wcr", # soil water content / soil moisture 
                            "sdy", # sine day of year 
                            "cdy", # cosine day of year 
