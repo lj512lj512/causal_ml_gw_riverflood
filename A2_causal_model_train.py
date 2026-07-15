@@ -300,7 +300,7 @@ def make_model_t(random_state):
         )
 
 # Choose output folder
-out_dir = Path(r"\\geodata.geus.dk\dkmodel_users\FloodWarning\Literature_survey\Causal_ML\results_pickle")
+out_dir = Path(r'\\geodata.geus.dk\HOME\causal_ml_gw_riverflood\results')
 out_dir.mkdir(parents=True, exist_ok=True)
 n_splits=20         
 
@@ -521,7 +521,7 @@ if __name__ == "__main__":
                 include_lowest=True
             )
             
-            required_quantile_cols = ["dtp_q75_value", "dtp_q90_value"]
+            required_quantile_cols = ["dtp_q50_value", "dtp_q75_value", "dtp_q90_value"]
             missing_cols = [c for c in required_quantile_cols if c not in df.columns]
             if missing_cols:
                 raise ValueError(
@@ -719,8 +719,8 @@ if __name__ == "__main__":
             # -----------------------------
             # Summaries for all contrasts
             # -----------------------------
-            
-            contrast_names = ["event_plus10", "mean_plus10", "q75_to_q90", "q90_plus10"]
+
+            contrast_names = ["event_plus10", "mean_plus10", "q50_to_q75", "q75_to_q90", "q90_plus10"]
             contrast_report_cols = [f"{c}_tau_report" for c in contrast_names]
             
             # Overall event-level summary
