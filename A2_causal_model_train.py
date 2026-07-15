@@ -102,17 +102,17 @@ def load_dataset(scale="catch"):
     # Load dynamics
     dynamics = {}
     for DKM_id in range(1, 7):
-        with open(rf"data/alphaearth/shp_df_dtp_wcr_DKM{DKM_id}.pkl", "rb") as f:
+        with open(rf"../data/alphaearth/shp_df_dtp_wcr_DKM{DKM_id}.pkl", "rb") as f:
             dynamics.update(pickle.load(f))
 
     
     # Load statics
-    with open(r"data/alphaearth/shp_df_ee_features.pkl", "rb") as f:
+    with open(r"../data/alphaearth/shp_df_ee_features.pkl", "rb") as f:
         statics = pickle.load(f)
 
 
     # Load events
-    all_events = pd.read_csv(r"data/rainfall_runoff_events_all_304_catchments.csv", index_col="Unnamed: 0")
+    all_events = pd.read_csv(r"../data/rainfall_runoff_events_all_304_catchments.csv", index_col="Unnamed: 0")
     all_events = all_events[~all_events['catch_id'].isin([82100426.0, 37710002.0, 91500006.0, 91200485.0, 91300007.0])] # remove bornhalm
     all_events["rain_start_date"] = pd.to_datetime(all_events["rain_start_date"])
     all_events["catch_id_float"] = all_events["catch_id"].astype(float)
