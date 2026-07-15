@@ -1,12 +1,10 @@
 # Folders to exclude
 results/
 figures/
-manuscript/
 data/
 
 # File types to exclude
 *.nc
 *.pdf
-*.docx
 __pycache__/
 .ipynb_checkpoints/
