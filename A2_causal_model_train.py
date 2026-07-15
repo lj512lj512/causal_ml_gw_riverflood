@@ -377,7 +377,7 @@ if __name__ == "__main__":
             # Heterogeneity features (X) are variables used to explain 
             # where the groundwater effect is stronger or weaker. 
             heterogeneity_features = ealpha_e_features + ["sdy","cdy"]
-            extra_state_cols = ["dtp_q75_value", "dtp_q90_value"]
+            extra_state_cols = ["dtp_q50_value", "dtp_q75_value", "dtp_q90_value"]
             # cross validation
             group_col = 'catch_id'
             cols = [outcome, raw_outcome, treatment, group_col] + confounders + heterogeneity_features + extra_state_cols
@@ -595,7 +595,8 @@ if __name__ == "__main__":
             
                 X_test = X[test_idx]
                 T_test = T[test_idx]
-            
+                
+                q50_test = df.iloc[test_idx]["dtp_q50_value"].values
                 q75_test = df.iloc[test_idx]["dtp_q75_value"].values
                 q90_test = df.iloc[test_idx]["dtp_q90_value"].values
             
@@ -612,6 +613,11 @@ if __name__ == "__main__":
                         "description": "Mean groundwater anomaly to mean + 10 cm",
                         "T0": np.zeros_like(T_test),
                         "T1": np.zeros_like(T_test) + 0.1,
+                    },
+                    "q50_to_q75": {
+                        "description": "Catchment-specific Q50 (moderate) to Q75 (high) groundwater state",
+                        "T0": q50_test,
+                        "T1": q75_test,
                     },
                     "q75_to_q90": {
                         "description": "Catchment-specific Q75 groundwater state to Q90 state",
