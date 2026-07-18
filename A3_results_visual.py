@@ -2207,7 +2207,6 @@ def make_attribute_bins(df, attr_col, n_bins=8, binning="quantile"):
 # --------------------------------------------------
 # Helper: summarize target effects using fixed bins
 # --------------------------------------------------
-
 def binned_effect_summary_fixed_bins(
     df,
     attr_col,
