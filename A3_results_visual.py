@@ -30,9 +30,10 @@ from scipy.ndimage import gaussian_filter
 from matplotlib.colors import LinearSegmentedColormap
 import geopandas as gpd
 
-# dataset = load_dataset(scale='catch') # catch, valley, downs
-# dataset = dataset.dropna(subset=["flood_occurrence"]).reset_index(drop=True)
+dataset = load_dataset(scale='catch') # catch, valley, downs
+dataset = dataset.dropna(subset=["flood_occurrence"]).reset_index(drop=True)
 
+pkl_path = r"\\geodata.geus.dk\HOME\causal_ml_gw_riverflood\results"
 #%% hist
 # -----------------------------
 # Choose columns
@@ -680,8 +681,6 @@ plt.show()
 # 1. Load all nuisance results
 # --------------------------------------------------
 
-pkl_path = r"\\geodata.geus.dk\dkmodel_users\FloodWarning\Literature_survey\Causal_ML\results_pickle"
-
 scales = ["catch", "valley", "downs"] #
 target_types = ["peak", "occurrence", "volume", "duration"]  #"peak", "occurrence", "volume", "duration"
 
@@ -704,7 +703,7 @@ for scale in scales:
     for target_type in target_types:
         pkl_file = os.path.join(
             pkl_path,
-            f"causal_ml_results_{target_type}_{scale}.pkl"
+            f"causal_ml_results_{target_type}_{scale}_all_contrasts.pkl"
         )
 
         with open(pkl_file, "rb") as f:
@@ -1020,252 +1019,229 @@ for target_type in target_types:
 nuisance_summary = pd.DataFrame(summary_rows)
 
 
-#%% causal - box
+# #%% causal - box
+# import os
+# import pickle
+# import numpy as np
+# import pandas as pd
+# import matplotlib.pyplot as plt
+# from matplotlib.patches import Patch
 
-import os
-import pickle
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
+# # --------------------------------------------------
+# # 1. Load causal fold results
+# # --------------------------------------------------
+# scales = ["catch", "valley", "downs"]
+# target_types = ["peak", "occurrence", "volume", "duration"]
 
-# --------------------------------------------------
-# 1. Load causal fold results
-# --------------------------------------------------
+# scale_label = {
+#     "catch": "Catchment",
+#     "valley": "Valley",
+#     "downs": "Downstream"
+# }
 
-pkl_path = r"\\geodata.geus.dk\dkmodel_users\FloodWarning\Literature_survey\Causal_ML\results_pickle"
+# target_label = {
+#     "peak": "Peak",
+#     "occurrence": "Occurrence",
+#     "volume": "Volume",
+#     "duration": "Duration"
+# }
 
-scales = ["catch", "valley", "downs"]
-target_types = ["peak", "occurrence", "volume", "duration"]
+# effect_unit_label = {
+#     "peak": "% change in peak",
+#     "occurrence": "Percentage-point change",
+#     "volume": "% change in volume + 1",
+#     "duration": "% change in duration + 1"
+# }
 
-scale_label = {
-    "catch": "Catchment",
-    "valley": "Valley",
-    "downs": "Downstream"
-}
+# all_effect_results = []
 
-target_label = {
-    "peak": "Peak",
-    "occurrence": "Occurrence",
-    "volume": "Volume",
-    "duration": "Duration"
-}
+# for scale in scales:
+#     for target_type in target_types:
+#         pkl_file = os.path.join(
+#             pkl_path,
+#             f"causal_ml_results_{target_type}_{scale}_all_contrasts.pkl")
 
-effect_unit_label = {
-    "peak": "% change in peak",
-    "occurrence": "Percentage-point change",
-    "volume": "% change in volume + 1",
-    "duration": "% change in duration + 1"
-}
+#         with open(pkl_file, "rb") as f:
+#             loaded = pickle.load(f)
 
-all_effect_results = []
+#         effect_results_df = loaded["fold_contrast_results"].copy()
 
-for scale in scales:
-    for target_type in target_types:
-        pkl_file = os.path.join(
-            pkl_path,
-            f"causal_ml_results_{target_type}_{scale}.pkl"
-        )
+#         effect_results_df["scale"] = scale
+#         effect_results_df["scale_label"] = scale_label[scale]
+#         effect_results_df["target_type"] = target_type
+#         effect_results_df["target_label"] = target_label[target_type]
 
-        with open(pkl_file, "rb") as f:
-            loaded = pickle.load(f)
+#         all_effect_results.append(effect_results_df)
 
-        effect_results_df = loaded["causal_fold_results"].copy()
+# causal_fold_all = pd.concat(all_effect_results, ignore_index=True)
 
-        effect_results_df["scale"] = scale
-        effect_results_df["scale_label"] = scale_label[scale]
-        effect_results_df["target_type"] = target_type
-        effect_results_df["target_label"] = target_label[target_type]
+# print(causal_fold_all.head())
+# print(causal_fold_all.columns)
 
-        all_effect_results.append(effect_results_df)
+# # --------------------------------------------------
+# # 2. Standardize effect column names
+# # --------------------------------------------------
+# def get_first_existing_column(df, candidates):
+#     for col in candidates:
+#         if col in df.columns:
+#             return col
+#     raise ValueError(f"None of these columns found: {candidates}")
 
-causal_fold_all = pd.concat(all_effect_results, ignore_index=True)
+# mean_col   = get_first_existing_column(causal_fold_all, ["mean_effect",   "mean_effect_percent"])
+# median_col = get_first_existing_column(causal_fold_all, ["median_effect", "median_effect_percent"])
+# p05_col    = get_first_existing_column(causal_fold_all, ["p05_effect",    "p05_effect_percent"])
+# p95_col    = get_first_existing_column(causal_fold_all, ["p95_effect",    "p95_effect_percent"])
 
-print(causal_fold_all.head())
-print(causal_fold_all.columns)
+# causal_fold_all["mean_effect_plot"]   = causal_fold_all[mean_col]
+# causal_fold_all["median_effect_plot"] = causal_fold_all[median_col]
+# causal_fold_all["p05_effect_plot"]    = causal_fold_all[p05_col]
+# causal_fold_all["p95_effect_plot"]    = causal_fold_all[p95_col]
 
-# --------------------------------------------------
-# 2. Standardize effect column names
-# --------------------------------------------------
-
-def get_first_existing_column(df, candidates):
-    for col in candidates:
-        if col in df.columns:
-            return col
-    raise ValueError(f"None of these columns found: {candidates}")
-
-mean_col = get_first_existing_column(
-    causal_fold_all,
-    ["mean_effect", "mean_effect_percent"]
-)
-
-median_col = get_first_existing_column(
-    causal_fold_all,
-    ["median_effect", "median_effect_percent"]
-)
-
-p05_col = get_first_existing_column(
-    causal_fold_all,
-    ["p05_effect", "p05_effect_percent"]
-)
-
-p95_col = get_first_existing_column(
-    causal_fold_all,
-    ["p95_effect", "p95_effect_percent"]
-)
-
-causal_fold_all["mean_effect_plot"]   = causal_fold_all[mean_col]
-causal_fold_all["median_effect_plot"] = causal_fold_all[median_col]
-causal_fold_all["p05_effect_plot"]    = causal_fold_all[p05_col]
-causal_fold_all["p95_effect_plot"]    = causal_fold_all[p95_col]
-
-# Width of event-level heterogeneity within each fold
-causal_fold_all["heterogeneity_width"] = (
-    causal_fold_all["p95_effect_plot"] - causal_fold_all["p05_effect_plot"])
+# # Width of event-level heterogeneity within each fold
+# causal_fold_all["heterogeneity_width"] = (
+#     causal_fold_all["p95_effect_plot"] - causal_fold_all["p05_effect_plot"])
 
 
-out_csv = os.path.join(pkl_path, "Causal_model_performance_summary.csv")
-causal_fold_all.to_csv(out_csv, index=False)
-print("Saved summary table to:", out_csv)
+# out_csv = os.path.join(pkl_path, "Causal_model_performance_summary.csv")
+# causal_fold_all.to_csv(out_csv, index=False)
+# print("Saved summary table to:", out_csv)
 
-# --------------------------------------------------
-# 3. Plot causal / residualized effect stability
-# --------------------------------------------------
-scale_colors = {"catch": "#4C78A8",
-                "valley": "#F58518",
-                "downs": "#54A24B"}
+# # --------------------------------------------------
+# # 3. Plot causal / residualized effect stability
+# # --------------------------------------------------
+# scale_colors = {"catch": "#4C78A8",
+#                 "valley": "#F58518",
+#                 "downs": "#54A24B"}
 
-def colored_scale_boxplot(ax, data, value_col, scales, title=None, ylabel=None, zero_line=False):
-    positions = np.arange(len(scales)) + 1
+# def colored_scale_boxplot(ax, data, value_col, scales, title=None, ylabel=None, zero_line=False):
+#     positions = np.arange(len(scales)) + 1
 
-    values = [
-        data.loc[data["scale"] == scale, value_col].dropna().values
-        for scale in scales
-    ]
+#     values = [
+#         data.loc[data["scale"] == scale, value_col].dropna().values
+#         for scale in scales
+#     ]
 
-    bp = ax.boxplot(
-        values,
-        positions=positions,
-        widths=0.55,
-        patch_artist=True,
-        showfliers=False,
-        medianprops={"linewidth": 1.5, "color": "black"},
-        whiskerprops={"linewidth": 1.0},
-        capprops={"linewidth": 1.0}
-    )
+#     bp = ax.boxplot(
+#         values,
+#         positions=positions,
+#         widths=0.55,
+#         patch_artist=True,
+#         showfliers=False,
+#         medianprops={"linewidth": 1.5, "color": "black"},
+#         whiskerprops={"linewidth": 1.0},
+#         capprops={"linewidth": 1.0}
+#     )
 
-    for box, scale in zip(bp["boxes"], scales):
-        box.set_facecolor(scale_colors[scale])
-        box.set_alpha(0.65)
-        box.set_edgecolor("black")
+#     for box, scale in zip(bp["boxes"], scales):
+#         box.set_facecolor(scale_colors[scale])
+#         box.set_alpha(0.65)
+#         box.set_edgecolor("black")
 
-    rng = np.random.default_rng(42)
+#     rng = np.random.default_rng(42)
 
-    for i, scale in enumerate(scales):
-        y = data.loc[data["scale"] == scale, value_col].dropna().values
-        x = rng.normal(positions[i], 0.045, size=len(y))
+#     for i, scale in enumerate(scales):
+#         y = data.loc[data["scale"] == scale, value_col].dropna().values
+#         x = rng.normal(positions[i], 0.045, size=len(y))
 
-        ax.scatter(
-            x,
-            y,
-            s=12,
-            alpha=0.45,
-            color=scale_colors[scale],
-            edgecolor="none"
-        )
+#         ax.scatter(
+#             x,
+#             y,
+#             s=12,
+#             alpha=0.45,
+#             color=scale_colors[scale],
+#             edgecolor="none"
+#         )
 
-    if zero_line:
-        ax.axhline(0, linestyle="--", linewidth=1.0, color="black", alpha=0.6)
+#     if zero_line:
+#         ax.axhline(0, linestyle="--", linewidth=1.0, color="black", alpha=0.6)
 
-    ax.set_xticks([])
-    ax.set_xlim(0.4, len(scales) + 0.6)
+#     ax.set_xticks([])
+#     ax.set_xlim(0.4, len(scales) + 0.6)
 
-    if title is not None:
-        ax.set_title(title, fontsize=11)
+#     if title is not None:
+#         ax.set_title(title, fontsize=11)
 
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
+#     if ylabel is not None:
+#         ax.set_ylabel(ylabel)
 
-    ax.grid(axis="y", alpha=0.25)
+#     ax.grid(axis="y", alpha=0.25)
 
 
-fig, axes = plt.subplots(
-    nrows=2,
-    ncols=4,
-    figsize=(10.5, 5.0),
-    sharey=False
-)
+# fig, axes = plt.subplots(
+#     nrows=2,
+#     ncols=4,
+#     figsize=(10.5, 5.0),
+#     sharey=False
+# )
 
-for col, target_type in enumerate(target_types):
-    sub = causal_fold_all[causal_fold_all["target_type"] == target_type].copy()
+# for col, target_type in enumerate(target_types):
+#     sub = causal_fold_all[causal_fold_all["target_type"] == target_type].copy()
 
-    # -----------------------------
-    # Top row: fold-mean causal effect
-    # -----------------------------
-    ax = axes[0, col]
+#     # -----------------------------
+#     # Top row: fold-mean causal effect
+#     # -----------------------------
+#     ax = axes[0, col]
 
-    colored_scale_boxplot(
-        ax=ax,
-        data=sub,
-        value_col="mean_effect_plot",
-        scales=scales,
-        title=f"{target_label[target_type]}",
-        ylabel="Mean effect (%)", # effect_unit_label[target_type] if col == 0 else None,
-        zero_line=True
-    )
+#     colored_scale_boxplot(
+#         ax=ax,
+#         data=sub,
+#         value_col="mean_effect_plot",
+#         scales=scales,
+#         title=f"{target_label[target_type]}",
+#         ylabel="Mean effect (%)", # effect_unit_label[target_type] if col == 0 else None,
+#         zero_line=True
+#     )
 
-    # -----------------------------
-    # Bottom row: event-level heterogeneity width
-    # -----------------------------
-    ax = axes[1, col]
+#     # -----------------------------
+#     # Bottom row: event-level heterogeneity width
+#     # -----------------------------
+#     ax = axes[1, col]
 
-    colored_scale_boxplot(
-        ax=ax,
-        data=sub,
-        value_col="heterogeneity_width",
-        scales=scales,
-        ylabel="Heterogeneity range (p95 - p05)" if col == 0 else None,
-        zero_line=False
-    )
+#     colored_scale_boxplot(
+#         ax=ax,
+#         data=sub,
+#         value_col="heterogeneity_width",
+#         scales=scales,
+#         ylabel="Heterogeneity range (p95 - p05)" if col == 0 else None,
+#         zero_line=False
+#     )
 
-# Shared legend
-legend_handles = [
-    Patch(
-        facecolor=scale_colors[scale],
-        edgecolor="black",
-        alpha=0.65,
-        label=scale_label[scale]
-    )
-    for scale in scales
-]
+# # Shared legend
+# legend_handles = [
+#     Patch(
+#         facecolor=scale_colors[scale],
+#         edgecolor="black",
+#         alpha=0.65,
+#         label=scale_label[scale]
+#     )
+#     for scale in scales
+# ]
 
-fig.legend(
-    handles=legend_handles,
-    loc="lower center",
-    ncol=3,
-    frameon=False,
-    bbox_to_anchor=(0.5, -0.02)
-)
-plt.tight_layout(rect=[0, 0.05, 1, 0.98])
-out_fig = os.path.join(pkl_path,"figure_causal_effect_stability_2x4_colored_scales.png")
-plt.savefig(out_fig, dpi=1200, bbox_inches="tight")
-plt.show()
-print("Saved figure to:", out_fig)
+# fig.legend(
+#     handles=legend_handles,
+#     loc="lower center",
+#     ncol=3,
+#     frameon=False,
+#     bbox_to_anchor=(0.5, -0.02)
+# )
+# plt.tight_layout(rect=[0, 0.05, 1, 0.98])
+# out_fig = os.path.join(pkl_path,"figure_causal_effect_stability_2x4_colored_scales.png")
+# plt.savefig(out_fig, dpi=1200, bbox_inches="tight")
+# plt.show()
+# print("Saved figure to:", out_fig)
+ 
+#%% causal - forest plot: Q75 -> Q90 only
 
-#%% causal - forest plot 
 import os
 import pickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 
 # --------------------------------------------------
 # 1. Settings
 # --------------------------------------------------
-
-pkl_path = r"\\geodata.geus.dk\dkmodel_users\FloodWarning\Literature_survey\Causal_ML\results_pickle"
 
 scales = ["catch", "valley", "downs"]
 target_types = ["peak", "occurrence", "volume", "duration"]
@@ -1273,19 +1249,22 @@ target_types = ["peak", "occurrence", "volume", "duration"]
 scale_label = {
     "catch": "Catch",
     "valley": "Valley",
-    "downs": "Downs"}
+    "downs": "Downs"
+}
 
 target_label = {
     "peak": "Peak discharge",
     "occurrence": "Flood occurrence",
     "volume": "Flood volume Q95",
-    "duration": "Duration Q95"}
+    "duration": "Duration Q95"
+}
 
 effect_unit_label = {
-    "peak": "% change",
+    "peak": "Percentage change",
     "occurrence": "Percentage-point change",
-    "volume": "% change in volume + 1",
-    "duration": "% change in duration + 1"}
+    "volume": "Percentage change",
+    "duration": "Percentage change"
+}
 
 scale_colors = {
     "catch": "#4C78A8",
@@ -1302,19 +1281,45 @@ scale_markers = {
 state_order = ["below_Q50", "Q50_Q75", "Q75_Q90", "above_Q90"]
 
 state_label = {
-    "below_Q50": 'Low', # "<GW_50",
-    "Q50_Q75": 'Moderate', # "GW_50–GW_75",
-    "Q75_Q90": 'High', # "GW_75–GW_90",
-    "above_Q90": 'Very high', # ">GW_90"
+    "below_Q50": "Low",
+    "Q50_Q75": "Moderate",
+    "Q75_Q90": "High",
+    "above_Q90": "Very high"
 }
 
-# Contrasts to show in row 1 and row 2
-row1_contrast = "event_plus10"
-row2_contrast = "q75_to_q90"
+forest_xlim = {
+    "peak": (10, 20),
+    "occurrence": (2, 4),
+    "volume": (2, 5),
+    "duration": (5, 8),
+}
 
-row1_label = "Event state → +10 cm"
-row2_label = "Q75 → Q90"
+# Only keep this contrast
+main_contrast       = "q75_to_q90"
+main_contrast_label = "High → Very high state"
 
+# --------------------------------------------------
+# GRL-style figure settings
+# --------------------------------------------------
+# GRL two-column width is approximately 7 inches.
+GRL_WIDTH = 7.08
+GRL_HEIGHT= 3.50
+
+plt.rcParams.update({
+    "font.family": "Times New Roman",
+    "font.size": 7,
+    "axes.titlesize": 7,
+    "axes.labelsize": 7,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
+    "axes.linewidth": 0.5,
+    "xtick.major.width": 0.5,
+    "ytick.major.width": 0.5,
+    "xtick.major.size": 3,
+    "ytick.major.size": 3,
+    "savefig.dpi": 1200,
+})
 
 # --------------------------------------------------
 # 2. Load all event-level causal results
@@ -1351,9 +1356,8 @@ effects_all = pd.concat(all_event_rows, ignore_index=True)
 print(effects_all.head())
 print(effects_all.columns)
 
-
 # --------------------------------------------------
-# 3. Create fold-level summaries for forest rows
+# 3. Fold-level summary for Q75 -> Q90 forest row
 # --------------------------------------------------
 
 def make_fold_summary(effects_all, contrast):
@@ -1401,17 +1405,21 @@ def make_fold_summary(effects_all, contrast):
     return fold_df, summary_df
 
 
-row1_fold_df, row1_summary = make_fold_summary(effects_all, row1_contrast)
-row2_fold_df, row2_summary = make_fold_summary(effects_all, row2_contrast)
-
+main_fold_df, main_summary = make_fold_summary(effects_all, main_contrast)
 
 # --------------------------------------------------
-# 4. Create fold-state summaries for row 3 boxplots
+# 4. State-dependent summaries for Q75 -> Q90
 # --------------------------------------------------
-# Row 3 uses event_plus10 effect grouped by observed groundwater state.
-# Each box contains fold-level mean effects within that state.
+# Row 2 also uses Q75 -> Q90.
+# Each box contains fold-level mean effects within each observed groundwater state.
 
-state_effect_col = f"{row1_contrast}_tau_report"
+state_effect_col = f"{main_contrast}_tau_report"
+
+if state_effect_col not in effects_all.columns:
+    raise ValueError(f"Column not found: {state_effect_col}")
+
+if "dtp_state" not in effects_all.columns:
+    raise ValueError("Column 'dtp_state' not found in effects_all.")
 
 state_fold_df = (
     effects_all
@@ -1437,27 +1445,29 @@ state_fold_summary = (
     .rename(columns={state_effect_col: "fold_state_mean_effect"})
 )
 
-print(state_fold_summary.head())
+state_fold_summary["contrast"] = main_contrast
 
+print(state_fold_summary.head())
 
 # --------------------------------------------------
 # 5. Plot helper functions
 # --------------------------------------------------
+
 def plot_forest_row(
     ax,
     summary_df,
     fold_df,
     target_type,
-    row_title=None,
     show_ylabel=False,
-    error_type="ci95",   # "ci95" or "sd"
-    show_fold_points=True
+    error_type="ci95",
+    show_fold_points=True,
+    xlim=None,
 ):
     """
-    Forest-style panel with fold-level points.
+    Forest-style panel.
 
     y-axis = groundwater spatial scale
-    x-axis = causal effect
+    x-axis = Q75 -> Q90 causal effect
 
     Small points = fold-level mean effects
     Large point = mean across folds
@@ -1483,9 +1493,7 @@ def plot_forest_row(
 
         y = y_positions[scale]
 
-        # -----------------------------
-        # 1. Add individual fold points
-        # -----------------------------
+        # Fold-level points
         if show_fold_points:
             fold_vals = sub_fold.loc[
                 sub_fold["scale"] == scale,
@@ -1497,16 +1505,14 @@ def plot_forest_row(
             ax.scatter(
                 fold_vals,
                 np.full(len(fold_vals), y) + y_jitter,
-                s=10,
+                s=8,
                 color=scale_colors[scale],
                 alpha=0.35,
                 edgecolor="none",
                 zorder=2
             )
 
-        # -----------------------------
-        # 2. Add mean effect and uncertainty
-        # -----------------------------
+        # Mean effect and uncertainty
         x = row["mean_effect"].values[0]
 
         if error_type == "sd":
@@ -1522,48 +1528,49 @@ def plot_forest_row(
             xerr=xerr,
             fmt=scale_markers[scale],
             color=scale_colors[scale],
-            markersize=5,
-            linewidth=1.6,
-            capsize=3,
+            markersize=4.5,
+            linewidth=1.1,
+            capsize=2.5,
             alpha=1.0,
             markeredgecolor="black",
-            markeredgewidth=0.4,
+            markeredgewidth=0.35,
             zorder=4
         )
 
-    ax.axvline(0, linestyle="--", linewidth=1.0, color="black", alpha=0.65)
+    ax.axvline(0, linestyle="--", linewidth=0.7, color="black", alpha=0.65)
 
     ax.set_yticks([2, 1, 0])
 
     if show_ylabel:
-        ax.set_yticklabels(["Catch", "Valley", "Downs"], rotation=45) #, fontsize=9
+        ax.set_yticklabels(["Catch", "Valley", "Downs"], rotation=90, va="center", ha="center",)
     else:
         ax.set_yticklabels([])
-
-    ax.grid(axis="x", alpha=0.25)
+        
+    if xlim is not None:
+        ax.set_xlim(xlim) 
+    
+    ax.grid(axis="x", alpha=0.22, linewidth=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    if row_title is not None:
-        ax.text(
-            0.02,
-            0.92,
-            row_title,
-            transform=ax.transAxes,
-            # fontsize=7,
-            fontweight="bold",
-            ha="left",
-            va="top")
 
-
-def plot_state_boxplot(ax, state_fold_summary, target_type, show_ylabel=False):
+def plot_state_boxplot(
+    ax,
+    state_fold_summary,
+    target_type,
+    show_ylabel=False
+):
     """
-    Boxplot panel:
+    Boxplot panel.
+
     x-axis = observed groundwater state
-    y-axis = fold-level mean effect
+    y-axis = fold-level mean Q75 -> Q90 effect
     boxes = groundwater spatial scales
     """
-    sub = state_fold_summary[state_fold_summary["target_type"] == target_type].copy()
+
+    sub = state_fold_summary[
+        state_fold_summary["target_type"] == target_type
+    ].copy()
 
     base_positions = np.arange(len(state_order))
     width = 0.22
@@ -1593,12 +1600,13 @@ def plot_state_boxplot(ax, state_fold_summary, target_type, show_ylabel=False):
         bp = ax.boxplot(
             values_by_state,
             positions=positions,
-            widths=0.16,
+            widths=0.15,
             patch_artist=True,
             showfliers=False,
-            medianprops={"linewidth": 1.2, "color": "black"},
-            whiskerprops={"linewidth": 0.9},
-            capprops={"linewidth": 0.9}
+            medianprops={"linewidth": 0.8, "color": "black"},
+            whiskerprops={"linewidth": 0.6},
+            capprops={"linewidth": 0.6},
+            boxprops={"linewidth": 0.6}
         )
 
         for box in bp["boxes"]:
@@ -1606,170 +1614,180 @@ def plot_state_boxplot(ax, state_fold_summary, target_type, show_ylabel=False):
             box.set_alpha(0.60)
             box.set_edgecolor("black")
 
-        # Add fold points
+        # Fold-level points
         for pos, vals in zip(positions, values_by_state):
             if len(vals) == 0:
                 continue
 
-            jitter = rng.normal(0, 0.025, size=len(vals))
+            jitter = rng.normal(0, 0.020, size=len(vals))
 
             ax.scatter(
                 np.full(len(vals), pos) + jitter,
                 vals,
-                s=7,
+                s=5,
                 alpha=0.45,
                 color=scale_colors[scale],
-                edgecolor="none"
+                edgecolor="none",
+                zorder=3
             )
 
-    ax.axhline(0, linestyle="--", linewidth=1.0, color="black", alpha=0.65)
+    ax.axhline(0, linestyle="--", linewidth=0.7, color="black", alpha=0.65)
 
     ax.set_xticks(base_positions)
-    ax.set_xticklabels([state_label[s] for s in state_order], rotation=35, ha="right")
+    ax.set_xticklabels(
+        [state_label[s] for s in state_order],
+        rotation=35,
+        ha="right"
+    )
 
     # if show_ylabel:
-    #     ax.set_ylabel("Fold mean effect") #, fontsize=10
+    #     ax.set_ylabel("Fold mean effect")
 
-    ax.grid(axis="y", alpha=0.25)
+    ax.grid(axis="y", alpha=0.22, linewidth=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
 
 # --------------------------------------------------
-# 6. Create 3 × 4 figure
+# 6. Create GRL two-row figure
 # --------------------------------------------------
-
 fig, axes = plt.subplots(
-    nrows=3,
+    nrows=2,
     ncols=4,
-    figsize=(200 / 25.4, 120 / 25.4),
+    figsize=(GRL_WIDTH, GRL_HEIGHT),
     sharey=False,
     gridspec_kw={
-        "height_ratios": [0.75, 0.75, 1.00],
-        "hspace": 0.38,
-        "wspace": 0.28
+        "height_ratios": [0.85, 1.05],
+        "hspace": 0.45,
+        "wspace": 0.32
     }
 )
+
+# panel_letters = [
+#     ["a", "b", "c", "d"],
+#     ["e", "f", "g", "h"]
+# ]
 
 for col, target_type in enumerate(target_types):
 
     # Column title
-    axes[0, col].set_title(target_label[target_type]) #, fontsize=12, pad=12
+    axes[0, col].set_title(target_label[target_type], pad=3)
 
     # -----------------------------
-    # Row 1: event state -> +10 cm
+    # Row 1: Q75 -> Q90 forest plot
     # -----------------------------
     plot_forest_row(
         ax=axes[0, col],
-        summary_df=row1_summary,
-        fold_df=row1_fold_df,
+        summary_df=main_summary,
+        fold_df=main_fold_df,
         target_type=target_type,
-        # row_title=row1_label,
         show_ylabel=(col == 0),
         error_type="ci95",
-        show_fold_points=True
+        show_fold_points=True,
+        xlim=forest_xlim[target_type],
     )
 
-    axes[0, col].set_xlabel(effect_unit_label[target_type]) #, fontsize=9
+    axes[0, col].set_xlabel(effect_unit_label[target_type], labelpad=1.5)
 
     # -----------------------------
-    # Row 2: Q75 -> Q90
-    # -----------------------------
-    plot_forest_row(
-        ax=axes[1, col],
-        summary_df=row2_summary,
-        fold_df=row2_fold_df,
-        target_type=target_type,
-        # row_title=row2_label,
-        show_ylabel=(col == 0),
-        error_type="ci95",
-        show_fold_points=True
-    )
-
-    axes[1, col].set_xlabel(effect_unit_label[target_type]) #, fontsize=9
-
-    # -----------------------------
-    # Row 3: state-dependent boxplot
+    # Row 2: state dependence of Q75 -> Q90 effect
     # -----------------------------
     plot_state_boxplot(
-        ax=axes[2, col],
+        ax=axes[1, col],
         state_fold_summary=state_fold_summary,
         target_type=target_type,
         show_ylabel=(col == 0)
     )
 
-    # axes[2, col].set_xlabel("Observed groundwater state", fontsize=9)
+    # axes[1, col].set_xlabel("Groundwater state", labelpad=1.5)
 
+    # Panel letters
+    # for row in range(2):
+    #     axes[row, col].text(
+    #         0.02,
+    #         0.96,
+    #         panel_letters[row][col],
+    #         transform=axes[row, col].transAxes,
+    #         ha="left",
+    #         va="top",
+    #         fontweight="bold"
+    #     )
 
 # Row labels on the far left
-fig.text(0.08,0.78,"Event state +10 cm",rotation=90,va="center",ha="center",fontweight="bold")
-fig.text(0.08,0.49,"High state → Very high",rotation=90,va="center",ha="center",fontweight="bold")
-fig.text(0.08,0.20,"Fold mean effect",rotation=90,va="center",ha="center",fontweight="bold")
+fig.text(
+    0.09, 0.70,
+    "High → Very hight state",
+    rotation=90,
+    va="center",
+    ha="center",
+    fontweight="bold"
+)
 
+fig.text(
+    0.09, 0.28,
+    "Fold mean effect",
+    rotation=90,
+    va="center",
+    ha="center",
+    fontweight="bold"
+)
 
 # Shared legend for groundwater scale
-legend_handles = [
-    Line2D(
-        [0], [0],
-        marker=scale_markers[scale],
-        color=scale_colors[scale],
-        label=scale_label[scale],
-        linestyle="none",
-        markersize=7
-    )
-    for scale in scales
-]
+# legend_handles = [
+#     Line2D(
+#         [0], [0],
+#         marker=scale_markers[scale],
+#         color=scale_colors[scale],
+#         label=scale_label[scale],
+#         linestyle="none",
+#         markersize=4.5,
+#         markeredgecolor="black",
+#         markeredgewidth=0.3
+#     )
+#     for scale in scales
+# ]
 
 # fig.legend(
 #     handles=legend_handles,
 #     loc="lower center",
 #     ncol=3,
 #     frameon=False,
-#     bbox_to_anchor=(0.5, -0.01)
+#     bbox_to_anchor=(0.53, 0.005),
+#     handletextpad=0.4,
+#     columnspacing=1.0
 # )
-plt.rcParams.update({
-    "font.size": 5,
-    "axes.titlesize": 5,
-    "axes.labelsize": 5,
-    "xtick.labelsize": 5,
-    "ytick.labelsize": 5,
-    "legend.fontsize": 5,
-})
 
-plt.tight_layout(rect=[0.03, 0.06, 1, 0.96])
+plt.tight_layout(rect=[0.035, 0.075, 1.0, 0.98])
 
 out_fig = os.path.join(
     pkl_path,
-    "figure3_three_rows_contrasts_and_state_dependence.png"
-)
+    "figure3_GRL_q75_to_q90_two_rows.png")
 
 plt.savefig(out_fig, dpi=1200, bbox_inches="tight")
 plt.show()
 
 print("Saved figure to:", out_fig)
 
-
 # --------------------------------------------------
 # 7. Save summary tables
 # --------------------------------------------------
 
-row1_summary.to_csv(
-    os.path.join(pkl_path, "figure3_row1_event_plus10_summary.csv"),
+main_summary.to_csv(
+    os.path.join(pkl_path, "figure3_q75_to_q90_summary.csv"),
     index=False
 )
 
-row2_summary.to_csv(
-    os.path.join(pkl_path, "figure3_row2_q75_to_q90_summary.csv"),
+main_fold_df.to_csv(
+    os.path.join(pkl_path, "figure3_q75_to_q90_fold_means.csv"),
     index=False
 )
 
 state_fold_summary.to_csv(
-    os.path.join(pkl_path, "figure3_row3_state_fold_summary.csv"),
+    os.path.join(pkl_path, "figure3_q75_to_q90_state_fold_summary.csv"),
     index=False
 )
 
 print("Saved summary tables.")
-
 
 
 #%% heterogeneity analysis - box
@@ -1952,8 +1970,8 @@ target_types = ["peak", "occurrence", "volume", "duration"]
 target_labels = {
     "peak": "Peak discharge",
     "occurrence": "Flood occurrence",
-    "volume": "Flood volume above Q95",
-    "duration": "Duration above Q95",
+    "volume": "Flood volume (Q > Q95)",
+    "duration": "Flood Duration",
 }
 
 effect_labels = {
