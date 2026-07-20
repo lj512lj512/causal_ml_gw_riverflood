@@ -34,6 +34,7 @@ dataset = load_dataset(scale='catch') # catch, valley, downs
 dataset = dataset.dropna(subset=["flood_occurrence"]).reset_index(drop=True)
 
 pkl_path = r"\\geodata.geus.dk\HOME\causal_ml_gw_riverflood\results"
+
 #%% hist
 # -----------------------------
 # Choose columns
@@ -572,21 +573,6 @@ def plot_groundwater_panel(
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    # ax.text(
-    #     0.02,
-    #     0.98,
-    #     f"n ≥ {min_count} per cell",
-    #     transform=ax.transAxes,
-    #     ha="left",
-    #     va="top",
-    #     fontsize=8,
-    #     bbox=dict(
-    #         facecolor="white",
-    #         edgecolor="none",
-    #         alpha=0.75,
-    #         boxstyle="round,pad=0.25"
-    #     )
-    # )
 
     if show_soil_contours:
         ax.text(
@@ -1017,218 +1003,6 @@ for target_type in target_types:
         summary_rows.append(row)
 
 nuisance_summary = pd.DataFrame(summary_rows)
-
-
-# #%% causal - box
-# import os
-# import pickle
-# import numpy as np
-# import pandas as pd
-# import matplotlib.pyplot as plt
-# from matplotlib.patches import Patch
-
-# # --------------------------------------------------
-# # 1. Load causal fold results
-# # --------------------------------------------------
-# scales = ["catch", "valley", "downs"]
-# target_types = ["peak", "occurrence", "volume", "duration"]
-
-# scale_label = {
-#     "catch": "Catchment",
-#     "valley": "Valley",
-#     "downs": "Downstream"
-# }
-
-# target_label = {
-#     "peak": "Peak",
-#     "occurrence": "Occurrence",
-#     "volume": "Volume",
-#     "duration": "Duration"
-# }
-
-# effect_unit_label = {
-#     "peak": "% change in peak",
-#     "occurrence": "Percentage-point change",
-#     "volume": "% change in volume + 1",
-#     "duration": "% change in duration + 1"
-# }
-
-# all_effect_results = []
-
-# for scale in scales:
-#     for target_type in target_types:
-#         pkl_file = os.path.join(
-#             pkl_path,
-#             f"causal_ml_results_{target_type}_{scale}_all_contrasts.pkl")
-
-#         with open(pkl_file, "rb") as f:
-#             loaded = pickle.load(f)
-
-#         effect_results_df = loaded["fold_contrast_results"].copy()
-
-#         effect_results_df["scale"] = scale
-#         effect_results_df["scale_label"] = scale_label[scale]
-#         effect_results_df["target_type"] = target_type
-#         effect_results_df["target_label"] = target_label[target_type]
-
-#         all_effect_results.append(effect_results_df)
-
-# causal_fold_all = pd.concat(all_effect_results, ignore_index=True)
-
-# print(causal_fold_all.head())
-# print(causal_fold_all.columns)
-
-# # --------------------------------------------------
-# # 2. Standardize effect column names
-# # --------------------------------------------------
-# def get_first_existing_column(df, candidates):
-#     for col in candidates:
-#         if col in df.columns:
-#             return col
-#     raise ValueError(f"None of these columns found: {candidates}")
-
-# mean_col   = get_first_existing_column(causal_fold_all, ["mean_effect",   "mean_effect_percent"])
-# median_col = get_first_existing_column(causal_fold_all, ["median_effect", "median_effect_percent"])
-# p05_col    = get_first_existing_column(causal_fold_all, ["p05_effect",    "p05_effect_percent"])
-# p95_col    = get_first_existing_column(causal_fold_all, ["p95_effect",    "p95_effect_percent"])
-
-# causal_fold_all["mean_effect_plot"]   = causal_fold_all[mean_col]
-# causal_fold_all["median_effect_plot"] = causal_fold_all[median_col]
-# causal_fold_all["p05_effect_plot"]    = causal_fold_all[p05_col]
-# causal_fold_all["p95_effect_plot"]    = causal_fold_all[p95_col]
-
-# # Width of event-level heterogeneity within each fold
-# causal_fold_all["heterogeneity_width"] = (
-#     causal_fold_all["p95_effect_plot"] - causal_fold_all["p05_effect_plot"])
-
-
-# out_csv = os.path.join(pkl_path, "Causal_model_performance_summary.csv")
-# causal_fold_all.to_csv(out_csv, index=False)
-# print("Saved summary table to:", out_csv)
-
-# # --------------------------------------------------
-# # 3. Plot causal / residualized effect stability
-# # --------------------------------------------------
-# scale_colors = {"catch": "#4C78A8",
-#                 "valley": "#F58518",
-#                 "downs": "#54A24B"}
-
-# def colored_scale_boxplot(ax, data, value_col, scales, title=None, ylabel=None, zero_line=False):
-#     positions = np.arange(len(scales)) + 1
-
-#     values = [
-#         data.loc[data["scale"] == scale, value_col].dropna().values
-#         for scale in scales
-#     ]
-
-#     bp = ax.boxplot(
-#         values,
-#         positions=positions,
-#         widths=0.55,
-#         patch_artist=True,
-#         showfliers=False,
-#         medianprops={"linewidth": 1.5, "color": "black"},
-#         whiskerprops={"linewidth": 1.0},
-#         capprops={"linewidth": 1.0}
-#     )
-
-#     for box, scale in zip(bp["boxes"], scales):
-#         box.set_facecolor(scale_colors[scale])
-#         box.set_alpha(0.65)
-#         box.set_edgecolor("black")
-
-#     rng = np.random.default_rng(42)
-
-#     for i, scale in enumerate(scales):
-#         y = data.loc[data["scale"] == scale, value_col].dropna().values
-#         x = rng.normal(positions[i], 0.045, size=len(y))
-
-#         ax.scatter(
-#             x,
-#             y,
-#             s=12,
-#             alpha=0.45,
-#             color=scale_colors[scale],
-#             edgecolor="none"
-#         )
-
-#     if zero_line:
-#         ax.axhline(0, linestyle="--", linewidth=1.0, color="black", alpha=0.6)
-
-#     ax.set_xticks([])
-#     ax.set_xlim(0.4, len(scales) + 0.6)
-
-#     if title is not None:
-#         ax.set_title(title, fontsize=11)
-
-#     if ylabel is not None:
-#         ax.set_ylabel(ylabel)
-
-#     ax.grid(axis="y", alpha=0.25)
-
-
-# fig, axes = plt.subplots(
-#     nrows=2,
-#     ncols=4,
-#     figsize=(10.5, 5.0),
-#     sharey=False
-# )
-
-# for col, target_type in enumerate(target_types):
-#     sub = causal_fold_all[causal_fold_all["target_type"] == target_type].copy()
-
-#     # -----------------------------
-#     # Top row: fold-mean causal effect
-#     # -----------------------------
-#     ax = axes[0, col]
-
-#     colored_scale_boxplot(
-#         ax=ax,
-#         data=sub,
-#         value_col="mean_effect_plot",
-#         scales=scales,
-#         title=f"{target_label[target_type]}",
-#         ylabel="Mean effect (%)", # effect_unit_label[target_type] if col == 0 else None,
-#         zero_line=True
-#     )
-
-#     # -----------------------------
-#     # Bottom row: event-level heterogeneity width
-#     # -----------------------------
-#     ax = axes[1, col]
-
-#     colored_scale_boxplot(
-#         ax=ax,
-#         data=sub,
-#         value_col="heterogeneity_width",
-#         scales=scales,
-#         ylabel="Heterogeneity range (p95 - p05)" if col == 0 else None,
-#         zero_line=False
-#     )
-
-# # Shared legend
-# legend_handles = [
-#     Patch(
-#         facecolor=scale_colors[scale],
-#         edgecolor="black",
-#         alpha=0.65,
-#         label=scale_label[scale]
-#     )
-#     for scale in scales
-# ]
-
-# fig.legend(
-#     handles=legend_handles,
-#     loc="lower center",
-#     ncol=3,
-#     frameon=False,
-#     bbox_to_anchor=(0.5, -0.02)
-# )
-# plt.tight_layout(rect=[0, 0.05, 1, 0.98])
-# out_fig = os.path.join(pkl_path,"figure_causal_effect_stability_2x4_colored_scales.png")
-# plt.savefig(out_fig, dpi=1200, bbox_inches="tight")
-# plt.show()
-# print("Saved figure to:", out_fig)
  
 #%% causal - forest plot: Q75 -> Q90 only
 
@@ -1663,10 +1437,6 @@ fig, axes = plt.subplots(
     }
 )
 
-# panel_letters = [
-#     ["a", "b", "c", "d"],
-#     ["e", "f", "g", "h"]
-# ]
 
 for col, target_type in enumerate(target_types):
 
@@ -1699,19 +1469,6 @@ for col, target_type in enumerate(target_types):
         show_ylabel=(col == 0)
     )
 
-    # axes[1, col].set_xlabel("Groundwater state", labelpad=1.5)
-
-    # Panel letters
-    # for row in range(2):
-    #     axes[row, col].text(
-    #         0.02,
-    #         0.96,
-    #         panel_letters[row][col],
-    #         transform=axes[row, col].transAxes,
-    #         ha="left",
-    #         va="top",
-    #         fontweight="bold"
-    #     )
 
 # Row labels on the far left
 fig.text(
@@ -1732,30 +1489,6 @@ fig.text(
     fontweight="bold"
 )
 
-# Shared legend for groundwater scale
-# legend_handles = [
-#     Line2D(
-#         [0], [0],
-#         marker=scale_markers[scale],
-#         color=scale_colors[scale],
-#         label=scale_label[scale],
-#         linestyle="none",
-#         markersize=4.5,
-#         markeredgecolor="black",
-#         markeredgewidth=0.3
-#     )
-#     for scale in scales
-# ]
-
-# fig.legend(
-#     handles=legend_handles,
-#     loc="lower center",
-#     ncol=3,
-#     frameon=False,
-#     bbox_to_anchor=(0.53, 0.005),
-#     handletextpad=0.4,
-#     columnspacing=1.0
-# )
 
 plt.tight_layout(rect=[0.035, 0.075, 1.0, 0.98])
 
@@ -1837,28 +1570,45 @@ def add_season_column(effects_df):
     )
 
 
-def get_effect_column(effects_df, target_type):
+def get_effect_column(effects_df, target_type, contrast="q75_to_q90"):
     """
-    Finds the correct effect column.
-    For your newer script, tau_report is generic.
-    For older peak scripts, tau_percent may already exist.
+    Finds the correct effect column for causal-effect plotting.
+
+    Current all-contrast result files store contrast-specific columns, e.g.
+    q75_to_q90_tau_report.
+
+    Older files may contain generic columns such as tau_report or tau_percent.
     """
 
+    # 1. New all-contrast format
+    contrast_col = f"{contrast}_tau_report"
+    if contrast_col in effects_df.columns:
+        return contrast_col
+
+    # 2. New all-contrast format with raw tau
+    contrast_tau_col = f"{contrast}_tau"
+    if contrast_tau_col in effects_df.columns:
+        return contrast_tau_col
+
+    # 3. Older occurrence format
     if target_type == "occurrence":
         if "tau_percentage_points" in effects_df.columns:
             return "tau_percentage_points"
         elif "tau_report" in effects_df.columns:
             return "tau_report"
-        else:
-            raise ValueError("No occurrence effect column found.")
 
+    # 4. Older continuous-outcome format
     else:
         if "tau_percent" in effects_df.columns:
             return "tau_percent"
         elif "tau_report" in effects_df.columns:
             return "tau_report"
-        else:
-            raise ValueError(f"No effect column found for {target_type}.")
+
+    raise ValueError(
+        f"No effect column found for {target_type}. "
+        f"Expected one of: {contrast_col}, {contrast_tau_col}, "
+        "tau_report, tau_percent, tau_percentage_points."
+    )
 
 def add_quantile_bins(df, col, q=4):
     """
@@ -1984,28 +1734,43 @@ effect_labels = {
 
 # load camels-dk dataset
 _, _, attributes = load_camels_info()
+geology = pd.read_csv(r"\\geodata.geus.dk\DKmodel_users\FloodWarning\LSTM_postprocessing\CAMELS-DK\Level_3\Attibutes\CAMELS_DK_geology.csv")
+new_cols = [
+    col for col in geology.columns
+    if col not in attributes.columns and col != "catch_id"]
+attributes = attributes.merge(
+    geology[["catch_id"] + new_cols],
+    on="catch_id",
+    how="left"
+)
+
 feature_cols     = [
     "catch_id",
     "elev_median",
     "slope_median",
     "pct_wetlands_corine_2018",
-    'BFI',"catch_area"]
+    'BFI',"catch_area", 
+    'pct_aeolain_sand', 'pct_water_deposit', 'pct_marsh',
+           'pct_marine_sand', 'pct_beach', 'pct_sandy_till', 'pct_till',
+           'pct_glaf_sand', 'pct_glal_clay', 'pct_down_sand', 'pct_glam_clay',
+           'chalk_d', 'uaquifer_t', 'uaquifer_d', 'uclay_t', 'usand_t'
+    ]
 keep_cols = ["target_type","scale","season","effect_value","fold"] + feature_cols
 
 all_dfs = []
 for target_type in target_types:
-    pkl_file = f"results_pickle/causal_ml_results_{target_type}_{scale}.pkl"
-    
+    pkl_file = os.path.join(pkl_path, f'causal_ml_results_{target_type}_{scale}_all_contrasts.pkl')
     dataset = load_dataset(scale=scale) # catch, valley, downs
     dataset = dataset.dropna(subset=["flood_occurrence"]).reset_index(drop=True)
+    
     with open(pkl_file, "rb") as f:
         obj = pickle.load(f)
     effects_df = obj["causal_event_results"].copy()
-    effects_df["target_type"] = target_type
-    effects_df["scale"] = scale
+    effects_df["target_type"]= target_type
+    effects_df["scale"]      = scale
     effects_df["event_date"] = pd.to_datetime(dataset.loc[effects_df["row_index"], 'rain_start_date'])
     effects_df = add_season_column(effects_df)
-    effect_col = get_effect_column(effects_df, target_type)
+    effect_col = get_effect_column(effects_df, target_type, contrast="q75_to_q90")
     effects_df["effect_value"] = effects_df[effect_col]
 
     # add additional figures
@@ -2029,100 +1794,16 @@ catch_effects = (
         pct_wetlands_corine_2018=("pct_wetlands_corine_2018", "first"),
         BFI=("BFI", "first"),
         catch_area=("catch_area", "first"),
+        
+        chalk_d=("chalk_d", "first"),
+        uaquifer_t=("uaquifer_t", "first"),
+        uaquifer_d=("uaquifer_d", "first"),
+        uclay_t=("uclay_t", "first"),
+        usand_t=("usand_t", "first"),
+        pct_aeolain_sand=("pct_aeolain_sand", "first"),
     )
     .reset_index()
 )
-
-# print(catch_effects.head())
-
-
-# catch_effects["catch_area_km2"] = catch_effects["catch_area"] / 1e6
-# attrs_to_plot = ["elev_median", "BFI", "catch_area_km2"]
-# target_order = ["peak", "occurrence", "volume", "duration"]
-
-# attr_labels = {
-#     "elev_median": "Median elevation",
-#     "BFI": "Baseflow index",
-#     "catch_area": "Catchment area (km²)"
-# }
-
-
-# fig, axes = plt.subplots(
-#     nrows=len(attrs_to_plot),
-#     ncols=len(target_order),
-#     figsize=(4.4 * len(target_order), 3.8 * len(attrs_to_plot)),
-#     sharey=False, dpi=1200
-# )
-
-# for r, attr_col in enumerate(attrs_to_plot):
-
-#     # Choose decimal places
-#     if attr_col in ["BFI"]:
-#         decimals = 2
-#     else:
-#         decimals = 1
-
-#     d_attr = catch_effects.dropna(subset=[attr_col, "mean_effect"]).copy()
-#     d_attr, bin_col, bin_labels = add_quantile_bins_with_ranges(
-#         d_attr,
-#         attr_col,
-#         q=4,
-#         decimals=decimals
-#     )
-
-#     for c, target in enumerate(target_order):
-#         ax = axes[r, c]
-
-#         d = d_attr[d_attr["target_type"] == target].copy()
-
-#         data_to_plot = [
-#             d.loc[d[bin_col] == b, "mean_effect"].dropna().values
-#             for b in bin_labels
-#         ]
-
-#         ax.boxplot(
-#             data_to_plot,
-#             labels=bin_labels,
-#             showfliers=False
-#         )
-
-#         # Add jittered catchment-level points
-#         rng = np.random.default_rng(100 + r * 10 + c)
-
-#         for i, b in enumerate(bin_labels, start=1):
-#             vals = d.loc[d[bin_col] == b, "mean_effect"].dropna().values
-#             x = rng.normal(i, 0.05, size=len(vals))
-#             ax.scatter(x, vals, s=12, alpha=0.35)
-
-#         ax.axhline(0, linestyle="--", linewidth=1)
-
-#         if r == 0:
-#             ax.set_title(target)
-
-#         if c == 0:
-#             ax.set_ylabel(f"{attr_labels.get(attr_col, attr_col)}\nMean effect")
-
-#         ax.set_xlabel(attr_labels.get(attr_col, attr_col))
-#         ax.tick_params(axis="x", rotation=35)
-
-# plt.tight_layout()
-# plt.show()
-    
-
-# all_attr_summaries = []
-
-# for attr in attrs_to_plot:
-#     s = summarize_effect_by_attribute_bin(
-#         catch_effects,
-#         attr_col=attr,
-#         effect_col="mean_effect",
-#         q=4
-#     )
-#     all_attr_summaries.append(s)
-
-# attr_summary = pd.concat(all_attr_summaries, ignore_index=True)
-
-# print(attr_summary)
 
 
 #%%
@@ -2137,7 +1818,6 @@ import matplotlib.pyplot as plt
 
 catch_effects["catch_area_km2"] = catch_effects["catch_area"] / 1e6
 
-attrs_to_plot = ["elev_median", "BFI"] # , "catch_area_km2"
 target_order = ["peak", "volume"]      #"occurrence",  , "duration"
 
 target_labels = {
@@ -2573,7 +2253,7 @@ def plot_attribute_effect_dual_left_axes(
 
 fig, axes = plot_attribute_effect_dual_left_axes(
     catch_effects=catch_effects,
-    attrs_to_plot=["elev_median", "BFI"],
+    attrs_to_plot=['chalk_d', 'uaquifer_t'], #"elev_median", "BFI"
     target_peak="peak",
     target_volume="volume",
     n_bins=20,
