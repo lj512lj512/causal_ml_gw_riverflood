@@ -1523,6 +1523,85 @@ state_fold_summary.to_csv(
 print("Saved summary tables.")
 
 
+"""
+Extract Section 3.2 summary tables (quantile contrasts only) from the
+causal_ml_results_{target}_{scale}_all_contrasts.pkl files produced by
+A2_causal_model_train.py.
+
+Outputs (written next to this script, or change OUT_CSV_DIR):
+  1. s32_fold_stability.csv   - fold-mean effects per contrast/target/scale
+                                (mean, std, min/max, n positive folds)
+  2. s32_overall_summary.csv  - event-level effect distribution per contrast
+  3. s32_by_state.csv         - effects stratified by antecedent GW state
+                                (for the state-dependence paragraph / Fig 4 bottom row)
+  4. s32_nuisance.csv         - fold-mean nuisance skill (incl. T_R2 overlap check)
+"""
+
+import pickle
+from pathlib import Path
+import pandas as pd
+
+# ---------------------------------------------------------------
+# EDIT THESE TWO PATHS
+# ---------------------------------------------------------------
+RESULTS_DIR = Path(r"\\geodata.geus.dk\HOME\causal_ml_gw_riverflood\results")
+OUT_CSV_DIR = Path(".")
+
+TARGETS   = ["peak", "occurrence", "volume", "duration"]
+SCALES    = ["catch", "valley", "downs"]
+CONTRASTS = ["q50_to_q75", "q75_to_q90"]   # 10 cm contrasts discarded
+REPORT_COLS = [f"{c}_tau_report" for c in CONTRASTS]
+
+stab_rows, overall_rows, state_rows, nuis_rows = [], [], [], []
+
+for target in TARGETS:
+    for scale in SCALES:
+        f = RESULTS_DIR / f"causal_ml_results_{target}_{scale}_all_contrasts.pkl"
+        if not f.exists():
+            print(f"MISSING: {f}")
+            continue
+        with open(f, "rb") as fh:
+            res = pickle.load(fh)
+
+        # 1. fold-level stability (this is what you cite as "consistent across folds")
+        s = res["contrast_stability"]
+        s = s[s["contrast"].isin(CONTRASTS)].copy()
+        s.insert(0, "target", target)
+        s.insert(1, "scale", scale)
+        s["effect_unit"] = res["effect_unit"]
+        stab_rows.append(s)
+
+        # 2. event-level distribution (mean, median, percentiles)
+        o = res["overall_contrast_summary"]
+        o = o[o["contrast"].isin(CONTRASTS)].copy()
+        o.insert(0, "target", target)
+        o.insert(1, "scale", scale)
+        overall_rows.append(o)
+
+        # 3. state-stratified effects (count/mean/median/std per dtp_state)
+        st = res["state_effect_summary"]
+        keep = [c for c in st.columns if c[0] in REPORT_COLS]
+        st2 = st[keep].copy()
+        st2.columns = [f"{a}__{b}" for a, b in st2.columns]  # flatten MultiIndex
+        st2 = st2.reset_index()
+        st2.insert(0, "target", target)
+        st2.insert(1, "scale", scale)
+        state_rows.append(st2)
+
+        # 4. nuisance skill, fold means (Y skill + treatment R2 = overlap diagnostic)
+        n = res["nuisance_results"].mean(numeric_only=True).to_frame().T
+        n.insert(0, "target", target)
+        n.insert(1, "scale", scale)
+        nuis_rows.append(n)
+
+OUT_CSV_DIR.mkdir(parents=True, exist_ok=True)
+pd.concat(stab_rows,    ignore_index=True).to_csv(OUT_CSV_DIR / "s32_fold_stability.csv",  index=False)
+pd.concat(overall_rows, ignore_index=True).to_csv(OUT_CSV_DIR / "s32_overall_summary.csv", index=False)
+pd.concat(state_rows,   ignore_index=True).to_csv(OUT_CSV_DIR / "s32_by_state.csv",        index=False)
+pd.concat(nuis_rows,    ignore_index=True).to_csv(OUT_CSV_DIR / "s32_nuisance.csv",        index=False)
+
+print("Done. Wrote 4 CSVs to", OUT_CSV_DIR.resolve())
+
 #%% heterogeneity analysis - box
 def assign_season_from_month(month):
     if month in [12, 1, 2]:
@@ -1734,26 +1813,29 @@ effect_labels = {
 
 # load camels-dk dataset
 _, _, attributes = load_camels_info()
-geology = pd.read_csv(r"\\geodata.geus.dk\DKmodel_users\FloodWarning\LSTM_postprocessing\CAMELS-DK\Level_3\Attibutes\CAMELS_DK_geology.csv")
-new_cols = [
-    col for col in geology.columns
-    if col not in attributes.columns and col != "catch_id"]
-attributes = attributes.merge(
-    geology[["catch_id"] + new_cols],
-    on="catch_id",
-    how="left"
-)
 
+geology = pd.read_csv(r"\\geodata.geus.dk\DKmodel_users\FloodWarning\LSTM_postprocessing\CAMELS-DK\Level_3\Attibutes\CAMELS_DK_geology.csv")
+new_cols = [col for col in geology.columns if col not in attributes.columns and col != "catch_id"]
+attributes = attributes.merge(geology[["catch_id"] + new_cols],on="catch_id",how="left")
+attributes = attributes.set_index('catch_id', drop=True)
+
+attributes['dtp_median'] = np.nan
+for catch_id in attributes.index:
+    attributes.loc[catch_id, 'dtp_median'] = load_camels_dynamic(STATION_ID = catch_id)['DKM_dtp'].median() * (-1.)
+attributes = attributes.reset_index()
+    
 feature_cols     = [
     "catch_id",
     "elev_median",
     "slope_median",
+    'pct_flat_area', 
     "pct_wetlands_corine_2018",
+    'pct_agriculture_corine_2018',
     'BFI',"catch_area", 
     'pct_aeolain_sand', 'pct_water_deposit', 'pct_marsh',
-           'pct_marine_sand', 'pct_beach', 'pct_sandy_till', 'pct_till',
-           'pct_glaf_sand', 'pct_glal_clay', 'pct_down_sand', 'pct_glam_clay',
-           'chalk_d', 'uaquifer_t', 'uaquifer_d', 'uclay_t', 'usand_t'
+    'pct_marine_sand', 'pct_beach', 'pct_sandy_till', 'pct_till',
+    'pct_glaf_sand', 'pct_glal_clay', 'pct_down_sand', 'pct_glam_clay',
+    'chalk_d', 'uaquifer_t', 'uaquifer_d', 'uclay_t', 'usand_t', 'dtp_median'
     ]
 keep_cols = ["target_type","scale","season","effect_value","fold"] + feature_cols
 
@@ -1791,7 +1873,7 @@ catch_effects = (
         n_events=("effect_value", "count"),
         elev_median=("elev_median", "first"),
         slope_median=("slope_median", "first"),
-        pct_wetlands_corine_2018=("pct_wetlands_corine_2018", "first"),
+        pct_agriculture_corine_2018=("pct_agriculture_corine_2018", "first"),
         BFI=("BFI", "first"),
         catch_area=("catch_area", "first"),
         
@@ -1801,6 +1883,7 @@ catch_effects = (
         uclay_t=("uclay_t", "first"),
         usand_t=("usand_t", "first"),
         pct_aeolain_sand=("pct_aeolain_sand", "first"),
+        dtp_median=("dtp_median", "first"),
     )
     .reset_index()
 )
@@ -1838,6 +1921,8 @@ attr_labels = {
     "elev_median": "Median elevation (m)",
     "BFI": "Baseflow index",
     "catch_area_km2": "Catchment area (km²)",
+    'pct_agriculture_corine_2018': 'Algriculture area (%)', 
+    'slope_median': 'slope_median'
 }
 
 # --------------------------------------------------
@@ -1937,6 +2022,7 @@ def binned_effect_summary_fixed_bins(
 
     return summary, d
 
+
 # --------------------------------------------------
 # Helper: bin attribute and summarize effect
 # --------------------------------------------------
@@ -1948,7 +2034,8 @@ def plot_attribute_effect_dual_left_axes(
     n_bins=8,
     binning="quantile",
     use_iqr_band=True,
-    show_points=True
+    show_points=True,
+    min_catchments_per_bin=5
 ):
     """
     One subplot per spatial attribute.
@@ -1960,21 +2047,35 @@ def plot_attribute_effect_dual_left_axes(
 
     This is useful when peak and volume effects have different magnitudes.
     """
-
+    plt.rcParams.update({
+        "font.family": "Times New Roman",
+        "font.size": 8.0,
+        "axes.titlesize": 8.,
+        "axes.labelsize": 8.,
+        "xtick.labelsize": 8.,
+        "ytick.labelsize": 8.,
+        "legend.fontsize": 8.,
+        "axes.linewidth": 0.45,
+        "xtick.major.width": 0.45,
+        "ytick.major.width": 0.45,
+        "xtick.major.size": 2.2,
+        "ytick.major.size": 2.2,
+        "axes.unicode_minus": False,
+    })
+    
     fig, axes = plt.subplots(
-        nrows=1,
-        ncols=len(attrs_to_plot),
-        figsize=(5.8 * len(attrs_to_plot), 4.2),
+        nrows=2,
+        ncols=2,
+        figsize=(7.08, 5.0),
         dpi=600,
         sharey=False
     )
 
-    if len(attrs_to_plot) == 1:
-        axes = [axes]
-
+    
     for i, attr_col in enumerate(attrs_to_plot):
 
-        ax_peak = axes[i]
+        axes_flat = axes.ravel()
+        ax_peak = axes_flat[i]
 
         # --------------------------------------------------
         # Make common bins for this attribute
@@ -2012,7 +2113,24 @@ def plot_attribute_effect_dual_left_axes(
         count_summary["bin_center"] = count_summary["attr_bin"].apply(
             lambda interval: (interval.left + interval.right) / 2
         ).astype(float)
-
+        
+        # --------------------------------------------------
+        # Keep only bins with more than min_catchments_per_bin catchments
+        # --------------------------------------------------
+        valid_bins = count_summary.loc[
+            count_summary["n_catchments"] > min_catchments_per_bin,
+            "attr_bin"
+        ].tolist()
+        
+        count_summary = count_summary[
+            count_summary["attr_bin"].isin(valid_bins)
+        ].copy()
+        
+        if count_summary.empty:
+            print(f"Warning: no bins with > {min_catchments_per_bin} catchments for {attr_col}")
+            ax_peak.axis("off")
+            continue
+        
         x_count = count_summary["bin_center"].values
         counts = count_summary["n_catchments"].values
 
@@ -2034,8 +2152,8 @@ def plot_attribute_effect_dual_left_axes(
             label="Catchment count"
         )
 
-        ax_count.set_ylabel("No. catchments", fontsize=9, color="grey")
-        ax_count.tick_params(axis="y", labelsize=8, colors="grey")
+        ax_count.set_ylabel("No. catchments", color="grey")
+        ax_count.tick_params(axis="y", colors="grey")
         ax_count.grid(False)
 
         # --------------------------------------------------
@@ -2045,7 +2163,7 @@ def plot_attribute_effect_dual_left_axes(
 
         # Move volume axis from right to left, slightly outward
         ax_volume.spines["right"].set_visible(False)
-        ax_volume.spines["left"].set_position(("outward", 52))
+        ax_volume.spines["left"].set_position(("outward", 35))
         ax_volume.spines["left"].set_visible(True)
         ax_volume.yaxis.set_label_position("left")
         ax_volume.yaxis.set_ticks_position("left")
@@ -2063,6 +2181,13 @@ def plot_attribute_effect_dual_left_axes(
             bins=bins,
             effect_col="mean_effect"
         )
+        summary_peak = summary_peak[
+        summary_peak["attr_bin"].isin(valid_bins)
+        ].copy()
+        
+        d_peak_binned = d_peak_binned[
+            d_peak_binned["attr_bin"].isin(valid_bins)
+        ].copy()
 
         x_peak = summary_peak["bin_center"].values
         y_peak = summary_peak["mean_effect"].values
@@ -2083,8 +2208,8 @@ def plot_attribute_effect_dual_left_axes(
             x_peak,
             y_peak,
             marker="o",
-            linewidth=2.2,
-            markersize=5,
+            linewidth=1,
+            markersize=2,
             color="tab:blue",
             label=target_labels.get(target_peak, target_peak)
         )
@@ -2102,6 +2227,11 @@ def plot_attribute_effect_dual_left_axes(
             bins=bins,
             effect_col="mean_effect"
         )
+        summary_volume = summary_volume[
+        summary_volume["attr_bin"].isin(valid_bins)].copy()
+    
+        d_volume_binned = d_volume_binned[
+        d_volume_binned["attr_bin"].isin(valid_bins)].copy()
 
         x_volume = summary_volume["bin_center"].values
         y_volume = summary_volume["mean_effect"].values
@@ -2122,8 +2252,8 @@ def plot_attribute_effect_dual_left_axes(
             x_volume,
             y_volume,
             marker="s",
-            linewidth=2.2,
-            markersize=5,
+            linewidth=1,
+            markersize=2,
             color="tab:orange",
             label=target_labels.get(target_volume, target_volume)
         )
@@ -2138,30 +2268,30 @@ def plot_attribute_effect_dual_left_axes(
                 catch_effects[attr_col].max() - catch_effects[attr_col].min()
             )
 
-            x_peak_jitter = d_peak[attr_col].values + rng.normal(
+            x_peak_jitter = d_peak_binned[attr_col].values + rng.normal(
                 0,
                 jitter_scale,
-                size=len(d_peak)
+                size=len(d_peak_binned)
             )
-
+            
             ax_peak.scatter(
                 x_peak_jitter,
-                d_peak["mean_effect"].values,
+                d_peak_binned["mean_effect"].values,
                 s=8,
                 alpha=0.13,
                 color="tab:blue",
                 linewidths=0
             )
 
-            x_volume_jitter = d_volume[attr_col].values + rng.normal(
+            x_volume_jitter = d_volume_binned[attr_col].values + rng.normal(
                 0,
                 jitter_scale,
-                size=len(d_volume)
+                size=len(d_volume_binned)
             )
-
+            
             ax_volume.scatter(
                 x_volume_jitter,
-                d_volume["mean_effect"].values,
+                d_volume_binned["mean_effect"].values,
                 s=8,
                 alpha=0.13,
                 color="tab:orange",
@@ -2174,7 +2304,7 @@ def plot_attribute_effect_dual_left_axes(
         ax_peak.axhline(
             0,
             linestyle="--",
-            linewidth=1,
+            # linewidth=1,
             color="tab:blue",
             alpha=0.6
         )
@@ -2182,7 +2312,7 @@ def plot_attribute_effect_dual_left_axes(
         ax_volume.axhline(
             0,
             linestyle=":",
-            linewidth=1,
+            # linewidth=1,
             color="tab:orange",
             alpha=0.6
         )
@@ -2192,24 +2322,24 @@ def plot_attribute_effect_dual_left_axes(
         # --------------------------------------------------
         ax_peak.set_xlabel(
             attr_labels.get(attr_col, attr_col),
-            fontsize=10
+            # fontsize=10
         )
 
         ax_peak.set_ylabel(
             "Average effect on peak discharge (%)",
-            fontsize=10,
+            # fontsize=10,
             color="tab:blue"
         )
 
         ax_volume.set_ylabel(
             "Average effect on flood volume (%)",
-            fontsize=10,
+            # fontsize=10,
             color="tab:orange"
         )
 
-        ax_peak.tick_params(axis="y", labelsize=8, colors="tab:blue")
-        ax_volume.tick_params(axis="y", labelsize=8, colors="tab:orange")
-        ax_peak.tick_params(axis="x", labelsize=8)
+        ax_peak.tick_params(axis="y", colors="tab:blue")
+        ax_volume.tick_params(axis="y", colors="tab:orange")
+        ax_peak.tick_params(axis="x")
 
         ax_peak.spines["left"].set_color("tab:blue")
         ax_volume.spines["left"].set_color("tab:orange")
@@ -2243,24 +2373,29 @@ def plot_attribute_effect_dual_left_axes(
         ax_peak.legend(
             handles,
             labels,
-            fontsize=8,
+            # fontsize=8,
             frameon=False,
             loc="best"
         )
-
+    
     plt.tight_layout()
+    
     return fig, axes
 
 fig, axes = plot_attribute_effect_dual_left_axes(
     catch_effects=catch_effects,
-    attrs_to_plot=['chalk_d', 'uaquifer_t'], #"elev_median", "BFI"
+    attrs_to_plot=['dtp_median', 'elev_median', 
+                   'uclay_t', 'BFI', ], #"elev_median", "BFI", pct_flat_area, pct_agriculture_corine_2018
     target_peak="peak",
     target_volume="volume",
     n_bins=20,
     binning="equal_width",
     use_iqr_band=True,
-    show_points=True
+    show_points=True,
+    min_catchments_per_bin=5
 )
-
+  
 plt.show()
+
+
 
