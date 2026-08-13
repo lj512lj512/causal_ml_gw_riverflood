@@ -302,11 +302,9 @@ ax_count.text(
 plt.tight_layout()
 plt.show()
 #%% data statistics
-
 # -----------------------------
 # Settings
 # -----------------------------
-
 x_col = "event_precip_mm"
 gw_col = "dtp_quantile"  # 0-1, higher = shallower groundwater
 soil_col = "wcr_quantile"   # 0-1, higher = wetter soil
@@ -347,7 +345,6 @@ min_count = 5
 # -----------------------------
 # Groundwater colormap
 # -----------------------------
-
 gw_cmap = LinearSegmentedColormap.from_list(
     "groundwater_percentile",
     [
@@ -360,7 +357,6 @@ gw_cmap = LinearSegmentedColormap.from_list(
     ],
     N=256
 )
-
 gw_cmap.set_bad(color="white")
 
 
@@ -437,7 +433,6 @@ def prepare_binned_groundwater(
     gw_mean_plot[event_count_plot < min_count] = np.nan
 
     soil_mean_plot = None
-
     if soil_col is not None:
         soil_mean, _, _, _ = binned_statistic_2d(
             plot_df[x_col],
@@ -447,11 +442,27 @@ def prepare_binned_groundwater(
             bins=[x_edges, y_edges]
         )
 
+        # soil_mean_plot = soil_mean.T
+        # soil_mean_plot[event_count_plot < min_count] = np.nan
+
+        # # Light smoothing makes the soil-moisture contours cleaner
+        # soil_mean_plot = gaussian_filter(soil_mean_plot, sigma=1.0)
         soil_mean_plot = soil_mean.T
         soil_mean_plot[event_count_plot < min_count] = np.nan
-
-        # Light smoothing makes the soil-moisture contours cleaner
-        soil_mean_plot = gaussian_filter(soil_mean_plot, sigma=1.0)
+        
+        # Smooth while respecting NaNs
+        valid = np.isfinite(soil_mean_plot)
+        
+        soil_filled = np.where(valid, soil_mean_plot, 0.0)
+        weights = valid.astype(float)
+        
+        soil_smooth = gaussian_filter(soil_filled, sigma=1.0)
+        weights_smooth = gaussian_filter(weights, sigma=1.0)
+        
+        soil_mean_plot = soil_smooth / np.where(weights_smooth == 0, np.nan, weights_smooth)
+        
+        # Keep only bins with enough original event support
+        soil_mean_plot[event_count_plot < min_count] = np.nan
 
     event_density = gaussian_filter(event_count_plot, sigma=1.2)
 
@@ -552,10 +563,11 @@ def plot_groundwater_panel(
               np.nanmin(data["soil_mean_plot"]),
               np.nanmax(data["soil_mean_plot"]))
         
-        soil_high = data["soil_mean_plot"] >= 0.75
-        groundwater_not_max = data["gw_mean_plot"] < 0.90
+        soil_high = data["soil_mean_plot"] >= 0.80
+        groundwater_not_max = data["gw_mean_plot"] < 0.80
         wet_soil_but_gw_can_rise = soil_high & groundwater_not_max
-    
+        wet_soil_high_gw         = soil_high & (~groundwater_not_max)
+        
         ax.contourf(
             data["Xc"],
             data["Yc"],
@@ -563,8 +575,17 @@ def plot_groundwater_panel(
             levels=[0.5, 1.5],
             colors="none",
             hatches=["///"],
-            alpha=0
-        )
+            alpha=0)
+        ax.contourf(
+            data["Xc"],
+            data["Yc"],
+            wet_soil_high_gw.astype(float),
+            levels=[0.5, 1.5],
+            colors="none",
+            hatches=["..."],
+            alpha=0)
+    
+
 
     ax.set_xlabel("Precipitation amount (mm)")
     ax.set_ylabel(ylabel)
@@ -576,9 +597,9 @@ def plot_groundwater_panel(
 
     if show_soil_contours:
         ax.text(
-            0.02,
+            0.42,
             0.98,
-            "Hatching: wet soil, GW still below p90",
+            " ",
             transform=ax.transAxes,
             ha="left",
             va="top",
@@ -624,17 +645,6 @@ for i, (ax, plot_var) in enumerate(zip(axes, plot_vars)):
         min_count=min_count
     )
 
-    # ax.text(
-    #     0.02,
-    #     1.04,
-    #     f"({chr(97 + i)})",
-    #     transform=ax.transAxes,
-    #     ha="left",
-    #     va="bottom",
-    #     fontsize=10,
-    #     fontweight="bold"
-    # )
-
 cbar = fig.colorbar(
     last_mesh,
     ax=axes,
@@ -660,7 +670,6 @@ mpl.rcParams.update({
 })
 
 plt.show()
-
 
 #%% nuisance
 # --------------------------------------------------
@@ -737,11 +746,11 @@ scale_label = {
 plot_columns = ["treatment", "peak", "occurrence", "volume", "duration"]
 
 column_label = {
-    "treatment": "T model(dtp)",
-    "peak": "Y model (Peak)",
-    "occurrence": "Y model (Occurrence)",
-    "volume": "Y model (Volume)",
-    "duration": "Y model (Duration)"
+    "treatment": "T model (GWD)",
+    "peak": "Y model (Peak discharge)",
+    "occurrence": "Y model (flood occurrence)",
+    "volume": "Y model (Flood volume)",
+    "duration": "Y model (Flood duration)"
 }
 
 metric_layout = {
@@ -1100,15 +1109,9 @@ plt.rcParams.update({
 # --------------------------------------------------
 
 all_event_rows = []
-
 for scale in scales:
     for target_type in target_types:
-
-        pkl_file = os.path.join(
-            pkl_path,
-            f"causal_ml_results_{target_type}_{scale}_all_contrasts.pkl"
-        )
-
+        pkl_file = os.path.join(pkl_path,f"causal_ml_results_{target_type}_{scale}_all_contrasts.pkl")
         if not os.path.exists(pkl_file):
             raise FileNotFoundError(f"Cannot find file: {pkl_file}")
 
@@ -1116,13 +1119,11 @@ for scale in scales:
             loaded = pickle.load(f)
 
         effects_event_df = loaded["causal_event_results"].copy()
-
         effects_event_df["scale"] = scale
         effects_event_df["scale_label"] = scale_label[scale]
         effects_event_df["target_type"] = target_type
         effects_event_df["target_label"] = target_label[target_type]
         effects_event_df["effect_unit"] = effect_unit_label[target_type]
-
         all_event_rows.append(effects_event_df)
 
 effects_all = pd.concat(all_event_rows, ignore_index=True)
@@ -1133,7 +1134,6 @@ print(effects_all.columns)
 # --------------------------------------------------
 # 3. Fold-level summary for Q75 -> Q90 forest row
 # --------------------------------------------------
-
 def make_fold_summary(effects_all, contrast):
     """
     Summarize one contrast by fold, scale, and target.
@@ -1522,7 +1522,7 @@ state_fold_summary.to_csv(
 
 print("Saved summary tables.")
 
-
+#%% casual - summary 
 """
 Extract Section 3.2 summary tables (quantile contrasts only) from the
 causal_ml_results_{target}_{scale}_all_contrasts.pkl files produced by
@@ -1601,7 +1601,6 @@ pd.concat(state_rows,   ignore_index=True).to_csv(OUT_CSV_DIR / "s32_by_state.cs
 pd.concat(nuis_rows,    ignore_index=True).to_csv(OUT_CSV_DIR / "s32_nuisance.csv",        index=False)
 
 print("Done. Wrote 4 CSVs to", OUT_CSV_DIR.resolve())
-
 #%% heterogeneity analysis - box
 def assign_season_from_month(month):
     if month in [12, 1, 2]:
@@ -1793,7 +1792,7 @@ def add_quantile_bins_with_ranges(df, col, q=4, decimals=2):
 # Load and combine results
 # -----------------------------
 # 0. load dataset
-scales      = 'catch'
+scale      = 'catch'
 target_types = ["peak", "occurrence", "volume", "duration"]
 
 target_labels = {
@@ -1815,8 +1814,13 @@ effect_labels = {
 _, _, attributes = load_camels_info()
 
 geology = pd.read_csv(r"\\geodata.geus.dk\DKmodel_users\FloodWarning\LSTM_postprocessing\CAMELS-DK\Level_3\Attibutes\CAMELS_DK_geology.csv")
+soil    = pd.read_csv(r"\\geodata.geus.dk\DKmodel_users\FloodWarning\LSTM_postprocessing\CAMELS-DK\Level_3\Attibutes\CAMELS_DK_soil.csv")
 new_cols = [col for col in geology.columns if col not in attributes.columns and col != "catch_id"]
 attributes = attributes.merge(geology[["catch_id"] + new_cols],on="catch_id",how="left")
+
+new_cols = [col for col in soil.columns if col not in attributes.columns and col != "catch_id"]
+attributes = attributes.merge(soil[["catch_id"] + new_cols],on="catch_id",how="left")
+
 attributes = attributes.set_index('catch_id', drop=True)
 
 attributes['dtp_median'] = np.nan
@@ -1827,10 +1831,13 @@ attributes = attributes.reset_index()
 feature_cols     = [
     "catch_id",
     "elev_median",
+    "elev_mean",
     "slope_median",
+    "slope_mean",
     'pct_flat_area', 
+    'pct_clay',
     "pct_wetlands_corine_2018",
-    'pct_agriculture_corine_2018',
+    'pct_agriculture_corine_2018', 'pct_water_corine_2018', 
     'BFI',"catch_area", 
     'pct_aeolain_sand', 'pct_water_deposit', 'pct_marsh',
     'pct_marine_sand', 'pct_beach', 'pct_sandy_till', 'pct_till',
@@ -1857,7 +1864,6 @@ for target_type in target_types:
 
     # add additional figures
     effects_with_features = effects_df.merge(attributes[feature_cols],on="catch_id",how="left")
-    
     all_dfs.append(effects_with_features[keep_cols])
 
 
@@ -1872,8 +1878,14 @@ catch_effects = (
         median_effect=("effect_value", "median"),
         n_events=("effect_value", "count"),
         elev_median=("elev_median", "first"),
+        elev_mean=("elev_mean", "first"),
         slope_median=("slope_median", "first"),
-        pct_agriculture_corine_2018=("pct_agriculture_corine_2018", "first"),
+        slope_mean=("slope_mean", "first"),
+        pct_flat_area=("pct_flat_area", "first"),
+        pct_clay=("pct_clay", "first"),
+        pct_agriculture_corine_2018=("pct_agriculture_corine_2018", "mean"),
+        pct_wetlands_corine_2018=("pct_wetlands_corine_2018", "mean"),
+        pct_water_corine_2018=("pct_water_corine_2018", "mean"),
         BFI=("BFI", "first"),
         catch_area=("catch_area", "first"),
         
@@ -1922,8 +1934,12 @@ attr_labels = {
     "BFI": "Baseflow index",
     "catch_area_km2": "Catchment area (km²)",
     'pct_agriculture_corine_2018': 'Algriculture area (%)', 
-    'slope_median': 'slope_median'
-}
+    'slope_median': 'slope_median', 
+    'uaquifer_d': 'Depth to uppermost aquifer (m)', 
+    'uclay_t': 'Thickness of uppermost clay (m)',
+    'dtp_median': 'Groundwater depth (m)',
+    'pct_clay': 'Clay content (%)'
+    }
 
 # --------------------------------------------------
 # Helper: create common bins for each attribute
@@ -2066,7 +2082,7 @@ def plot_attribute_effect_dual_left_axes(
     fig, axes = plt.subplots(
         nrows=2,
         ncols=2,
-        figsize=(7.08, 5.0),
+        figsize=(7.08, 4.0),
         dpi=600,
         sharey=False
     )
@@ -2301,21 +2317,21 @@ def plot_attribute_effect_dual_left_axes(
         # --------------------------------------------------
         # Zero lines
         # --------------------------------------------------
-        ax_peak.axhline(
-            0,
-            linestyle="--",
-            # linewidth=1,
-            color="tab:blue",
-            alpha=0.6
-        )
+        # ax_peak.axhline(
+        #     0,
+        #     linestyle="--",
+        #     # linewidth=1,
+        #     color="tab:blue",
+        #     alpha=0.6
+        # )
 
-        ax_volume.axhline(
-            0,
-            linestyle=":",
-            # linewidth=1,
-            color="tab:orange",
-            alpha=0.6
-        )
+        # ax_volume.axhline(
+        #     0,
+        #     linestyle=":",
+        #     # linewidth=1,
+        #     color="tab:orange",
+        #     alpha=0.6
+        # )
 
         # --------------------------------------------------
         # Axis labels and formatting
@@ -2369,14 +2385,9 @@ def plot_attribute_effect_dual_left_axes(
         if bar_handle is not None:
             handles.append(bar_handle)
             labels.append("Catchment count")
-
-        ax_peak.legend(
-            handles,
-            labels,
-            # fontsize=8,
-            frameon=False,
-            loc="best"
-        )
+            
+        if i == 0:
+            ax_peak.legend(handles,labels,frameon=False,loc="best")
     
     plt.tight_layout()
     
@@ -2384,8 +2395,10 @@ def plot_attribute_effect_dual_left_axes(
 
 fig, axes = plot_attribute_effect_dual_left_axes(
     catch_effects=catch_effects,
-    attrs_to_plot=['dtp_median', 'elev_median', 
-                   'uclay_t', 'BFI', ], #"elev_median", "BFI", pct_flat_area, pct_agriculture_corine_2018
+    attrs_to_plot=['dtp_median',
+                   'pct_clay', 
+                   'pct_agriculture_corine_2018', 
+                   'BFI', ], #'dtp_median', 'uaquifer_d', 'slope_median', 'BFI', 
     target_peak="peak",
     target_volume="volume",
     n_bins=20,

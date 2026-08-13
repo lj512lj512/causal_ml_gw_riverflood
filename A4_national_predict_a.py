@@ -24,6 +24,7 @@ from lightgbm import LGBMRegressor
 from datetime import datetime
 import ee
 import geemap
+import matplotlib as mpl
 
 from A2_causal_model_train import load_dataset, make_model_y, make_model_t
 
@@ -34,7 +35,7 @@ from A2_causal_model_train import load_dataset, make_model_y, make_model_t
 
 RUN_EE_EXTRACTION = False
 
-SCALE = "catch"  # "catch", "valley", "downs"
+SCALE = "downs"  # "catch", "valley", "downs"
 TARGET_TYPES = ["peak", "volume"]
 
 BASE_DIR = Path(r"\\geodata.geus.dk\DKmodel_users\FloodWarning")
@@ -53,7 +54,7 @@ DK_SHP = Path(
     r"\Shapfile\DKDomains2013\kort10_land_DK.shp"
 )
 
-OUT_DIR = Path(r"results_pickle")
+OUT_DIR = Path(r"../results")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 OUT_FEATURE_CSV = OUT_DIR / "all_catchments_groundwater_spatial_features.csv"
@@ -94,53 +95,50 @@ HETEROGENEITY_FEATURES = ealpha_e_features
 # Effect-bin settings
 # ==================================================
 
-PEAK_LABELS = ["<0%", "0–2%", "2–4%", "4–6%", "6–8%", ">8%"]
-PEAK_BINS = [-np.inf, 0, 2, 4, 6, 8, np.inf]
+PEAK_LABELS = ["<10%", "10-15%", "15-20%", "20-25%", "25-30%", ">30%"]
+PEAK_BINS = [-np.inf, 10, 15, 20, 25, 30, np.inf]
 
-VOLUME_LABELS = ["<0%", "0–1%", "1–2%", "2–3%", "3–4%", ">4%"]
-VOLUME_BINS = [-np.inf, 0, 1, 2, 3, 4, np.inf]
-
-COMBINED_LABELS = ["0–25%", "25–50%", "50–75%", "75–90%", "90–100%"]
-COMBINED_BINS = [0, 0.25, 0.50, 0.75, 0.90, 1.00]
+VOLUME_LABELS = ["<0%", "0-2%", "2-4%", "4-6%", "6-8%", ">8%"]
+VOLUME_BINS = [-np.inf, 0, 2, 4, 6, 8, np.inf]
 
 # Warm sequential palette: light = weak sensitivity, dark = strong sensitivity
 EFFECT_COLORS_6 = {
-    "<0%":  "#bdbdbd",
-    "0–2%": "#f0f9e8",
-    "2–4%": "#bae4bc",
-    "4–6%": "#7bccc4",
-    "6–8%": "#43a2ca",
+    "<0%":    "#d95f5f",
+    "<10%":   "#bdbdbd",
+    "10-15%": "#f0f9e8",
+    "15-20%": "#bae4bc",
+    "20-25%": "#7bccc4",
+    "25-30%": "#43a2ca",
+    ">30%":   "#0868ac",
+
+    "0-2%": "#f0f9e8",
+    "2-4%": "#bae4bc",
+    "4-6%": "#7bccc4",
+    "6-8%": "#43a2ca",
     ">8%": "#0868ac",
-
-    "0–1%": "#f0f9e8",
-    "1–2%": "#bae4bc",
-    "2–3%": "#7bccc4",
-    "3–4%": "#43a2ca",
-    ">4%": "#0868ac",
 }
 
-COMBINED_COLORS = {
-    "0–25%": "#fff7ec",
-    "25–50%": "#fee8c8",
-    "50–75%": "#fdbb84",
-    "75–90%": "#e34a33",
-    "90–100%": "#7f0000",
-}
+# COMBINED_COLORS = {
+#     "0–25%": "#fff7ec",
+#     "25–50%": "#fee8c8",
+#     "50–75%": "#fdbb84",
+#     "75–90%": "#e34a33",
+#     "90–100%": "#7f0000",
+# }
 
 TYPE_ORDER = ["Both high", "Peak", "Volume", "Mixed"]
 
 TYPE_COLORS = {
     "Both high": "#6a51a3",
-    "Peak": "#2b8cbe",
-    "Volume": "#f03b20",
-    "Mixed": "#bdbdbd",
+    "Peak":      "#2b8cbe",
+    "Volume":    "#f03b20",
+    "Mixed":     "#bdbdbd",
 }
 
 
 # ==================================================
 # Helper functions: Earth Engine
 # ==================================================
-
 def initialize_earth_engine():
     try:
         ee.Initialize()
@@ -152,7 +150,7 @@ def initialize_earth_engine():
 def get_ee_features_for_catchment(catch, year=2020):
 
     # Reproject to WGS84
-    catchments = catch.to_crs(epsg=4326)
+    catch = catch.to_crs(epsg=4326)
     
     # Drop Z dimension
     catch["geometry"] = catch.geometry.apply(force_2d)
@@ -246,13 +244,11 @@ def build_national_feature_table(
 
         if run_ee_extraction:
             catch_geom = catchments_gdf.loc[catchments_gdf["catch_id"].astype(str) == str(catch_id)].copy()
-
             alpha_dict = get_ee_features_for_catchment(catch_geom)[ealpha_e_features].iloc[0].to_dict()
             row.update(alpha_dict)
+        all_rows.append(pd.DataFrame(row, index=['catch_id']))
 
-        all_rows.append(row)
-
-    all_catchments_df = pd.DataFrame(all_rows)
+    all_catchments_df = pd.concat(all_rows)
     all_catchments_df.to_csv(out_csv, index=False)
 
     print(f"Saved national feature table: {out_csv}")
@@ -370,12 +366,13 @@ def predict_q90_sensitivity(
     missing = [c for c in required_cols if c not in all_catchments_df.columns]
     if missing:
         raise ValueError(f"Missing columns in national feature table: {missing}")
-
+    # for col in ealpha_e_features:
+    #     all_catchments_df[col] = all_catchments_df[col].iloc[0]
     d = all_catchments_df.dropna(subset=required_cols).copy()
-
-    X_all = d[heterogeneity_features].values
-    T0 = d["dtp_q90_value"].values
-    T1 = d["dtp_q90_value"].values + 0.1
+    # X_all = d[heterogeneity_features].values
+    X_all = d[heterogeneity_features].to_numpy(dtype=np.float64)
+    T0 = d["dtp_q75_value"].values
+    T1 = d["dtp_q90_value"].values
 
     tau = model.effect(X_all, T0=T0, T1=T1)
     tau = np.asarray(tau).ravel()
@@ -447,6 +444,24 @@ def add_vulnerability_metrics_effect_bins(map_gdf):
     return map_gdf
 
 
+def add_effect_bins(map_gdf):
+
+    map_gdf["peak_effect_bin"] = pd.cut(
+        map_gdf["peak_q90_plus10"],
+        bins=PEAK_BINS,
+        labels=PEAK_LABELS,
+        include_lowest=True,
+    )
+
+    map_gdf["volume_effect_bin"] = pd.cut(
+        map_gdf["volume_q90_plus10"],
+        bins=VOLUME_BINS,
+        labels=VOLUME_LABELS,
+        include_lowest=True,
+    )
+
+    return map_gdf
+
 # ==================================================
 # Step 6: Mapping helpers
 # ==================================================
@@ -494,7 +509,6 @@ def add_circular_percent_legend(
     order,
     title,
     loc=(0.60, 0.56, 0.45, 0.45),
-    fontsize=5.5
 ):
     """
     Circular bar legend.
@@ -541,7 +555,6 @@ def add_circular_percent_legend(
             f"{pct:.0f}%",
             ha="center",
             va="center",
-            fontsize=fontsize
         )
 
 
@@ -555,8 +568,6 @@ def add_subplot_legend_below(
     colors,
     title=None,
     ncol=None,
-    fontsize=5.8,
-    title_fontsize=6.2,
     y_offset=-0.06):
     """
     Add a discrete color legend below one subplot.
@@ -583,8 +594,6 @@ def add_subplot_legend_below(
         bbox_to_anchor=(0.5, y_offset),
         ncol=ncol,
         frameon=False,
-        fontsize=fontsize,
-        title_fontsize=title_fontsize,
         handlelength=1.0,
         handleheight=0.7,
         columnspacing=0.7,
@@ -597,11 +606,118 @@ def make_four_panel_sensitivity_map(
     map_gdf,
     catchment_polygons,
     dk_gdf,
-    out_file=None):
+    out_file=None,
+):
+    """
+    Four-panel national groundwater-sensitivity map.
+
+    Panels
+    ------
+    (a) Q75 -> Q90 effect on peak discharge
+    (b) Q75 -> Q90 effect on flood volume
+    (c) Mean groundwater depth
+    (d) Magnitude of Q75 -> Q90 groundwater rise
+
+    Panels c and d are converted to categorical bins so that all four
+    panels use the same circular percentage inset and discrete legend.
+    """
+
+    # ==================================================
+    # Basic settings
+    # ==================================================
+
     extent = {
-        "DK": [[439000, 739000], [6049000, 6404000]],
+        "DK": [
+            [439000, 739000],
+            [6049000, 6404000],
+        ],
     }
 
+    map_gdf = map_gdf.copy()
+
+    # ==================================================
+    # Groundwater-depth categories for panel c
+    # ==================================================
+    #
+    # mean_gwd should be POSITIVE depth below land surface:
+    #
+    #     1 m = shallow
+    #     10 m = deep
+    #
+    # You can change these thresholds if needed.
+    # ==================================================
+
+    GWD_BINS = [-np.inf,1,2,3,5,10,np.inf]
+    GWD_LABELS = ["<1","1-2","2-3","3-5","5-10",">10",]
+
+    # Darker = shallower groundwater
+    GWD_COLORS = {
+        "<1":   "#fff7ec",
+        "1-2":  "#fee8c8",
+        "2-3":  "#fdd49e",
+        "3-5":  "#fdbb84",
+        "5-10": "#e34a33",
+        ">10":  "#7f0000",
+    }
+
+    map_gdf["mean_gwd_bin"] = pd.cut(
+        map_gdf["mean_gwd"],
+        bins=GWD_BINS,
+        labels=GWD_LABELS,
+        include_lowest=True,
+    )
+
+    # ==================================================
+    # Q75 -> Q90 groundwater-rise categories for panel d
+    # ==================================================
+    #
+    # These are absolute differences in groundwater anomaly.
+    #
+    # The defaults correspond to:
+    # <10 cm, 10–20 cm, ..., >50 cm.
+    #
+    # Adjust if your distribution is substantially different.
+    # ==================================================
+
+    DELTA_BINS = [
+        -np.inf,
+        0.10,
+        0.20,
+        0.30,
+        0.40,
+        0.50,
+        np.inf,
+    ]
+
+    DELTA_LABELS = [
+        "<0.1",
+        "0.1-0.2",
+        "0.2-0.3",
+        "0.3-0.4",
+        "0.4-0.5",
+        ">0.5",
+    ]
+
+    # Darker = larger groundwater rise
+    DELTA_COLORS = {
+        "<0.1":    "#f7f4f9",
+        "0.1-0.2": "#e7e1ef",
+        "0.2-0.3": "#c994c7",
+        "0.3-0.4": "#df65b0",
+        "0.4-0.5": "#ce1256",
+        ">0.5":    "#91003f",
+    }
+
+    map_gdf["dtp_q75_q90_delta_bin"] = pd.cut(
+        map_gdf["dtp_q75_q90_delta"],
+        bins=DELTA_BINS,
+        labels=DELTA_LABELS,
+        include_lowest=True,
+    )
+
+    # ==================================================
+    # Create figure
+    # ==================================================
     fig, axes = plt.subplots(
         1,
         4,
@@ -609,25 +725,34 @@ def make_four_panel_sensitivity_map(
         sharey=True,
         figsize=(9.5, 8.5),
         dpi=600,
-        constrained_layout=False
+        constrained_layout=False,
     )
 
     panel_titles = [
-        "(a) Peak sensitivity",
-        "(b) Volume sensitivity",
-        "(c) Combined vulnerability",
-        "(d) Vulnerability type",
+        "(a)", # Peak-discharge amplification
+        "(b)", #  Flood-volume amplification
+        "(c)", #  Mean groundwater depth
+        "(d)", # Q75 → Q90 groundwater rise
     ]
 
+    # ==================================================
+    # Background
+    # ==================================================
+
     for ax, title in zip(axes, panel_titles):
-        subplot_setup(ax, extent["DK"], edgecolor="black")
+
+        subplot_setup(
+            ax,
+            extent["DK"],
+            edgecolor="black",
+        )
 
         dk_gdf.plot(
             ax=ax,
             facecolor="none",
             edgecolor="black",
             linewidth=0.35,
-            zorder=5
+            zorder=5,
         )
 
         catchment_polygons.plot(
@@ -635,20 +760,26 @@ def make_four_panel_sensitivity_map(
             facecolor="none",
             edgecolor="gray",
             linewidth=0.05,
-            zorder=6
+            zorder=6,
         )
 
-        # ax.set_title(title, fontsize=8, pad=2)
+        plt.text(0.2, 0.9, title, 
+                 horizontalalignment='center',
+                 verticalalignment='center', 
+                 transform=ax.transAxes, 
+                 fontweight="bold",)
+        
 
-    # --------------------------------------------------
-    # Panel a: peak effect bins
-    # --------------------------------------------------
+    # ==================================================
+    # Panel a: peak-discharge effect
+    # ==================================================
+
     plot_categorical_map(
         gdf=map_gdf,
         ax=axes[0],
         column="peak_effect_bin",
         order=PEAK_LABELS,
-        colors=EFFECT_COLORS_6
+        colors=EFFECT_COLORS_6,
     )
 
     peak_counts = (
@@ -664,18 +795,19 @@ def make_four_panel_sensitivity_map(
         colors=EFFECT_COLORS_6,
         order=PEAK_LABELS,
         title="Peak",
-        loc=(0.56, 0.54, 0.45, 0.45)
+        loc=(0.56, 0.54, 0.45, 0.45),
     )
 
-    # --------------------------------------------------
-    # Panel b: volume effect bins
-    # --------------------------------------------------
+    # ==================================================
+    # Panel b: flood-volume effect
+    # ==================================================
+
     plot_categorical_map(
         gdf=map_gdf,
         ax=axes[1],
         column="volume_effect_bin",
         order=VOLUME_LABELS,
-        colors=EFFECT_COLORS_6
+        colors=EFFECT_COLORS_6,
     )
 
     volume_counts = (
@@ -691,73 +823,77 @@ def make_four_panel_sensitivity_map(
         colors=EFFECT_COLORS_6,
         order=VOLUME_LABELS,
         title="Volume",
-        loc=(0.56, 0.54, 0.45, 0.45)
+        loc=(0.56, 0.54, 0.45, 0.45),
     )
 
-    # --------------------------------------------------
-    # Panel c: combined vulnerability percentile
-    # --------------------------------------------------
+    # ==================================================
+    # Panel c: mean groundwater depth
+    # ==================================================
+
     plot_categorical_map(
         gdf=map_gdf,
         ax=axes[2],
-        column="combined_effect_bin",
-        order=COMBINED_LABELS,
-        colors=COMBINED_COLORS
+        column="mean_gwd_bin",
+        order=GWD_LABELS,
+        colors=GWD_COLORS,
     )
 
-    combined_counts = (
-        map_gdf["combined_effect_bin"]
+    gwd_counts = (
+        map_gdf["mean_gwd_bin"]
         .value_counts()
-        .reindex(COMBINED_LABELS)
+        .reindex(GWD_LABELS)
         .fillna(0)
     )
 
     add_circular_percent_legend(
         ax=axes[2],
-        counts=combined_counts,
-        colors=COMBINED_COLORS,
-        order=COMBINED_LABELS,
-        title="Both",
-        loc=(0.56, 0.54, 0.45, 0.45)
+        counts=gwd_counts,
+        colors=GWD_COLORS,
+        order=GWD_LABELS,
+        title="GWD",
+        loc=(0.56, 0.54, 0.45, 0.45),
     )
 
-    # --------------------------------------------------
-    # Panel d: vulnerability type
-    # --------------------------------------------------
+    # ==================================================
+    # Panel d: Q75 -> Q90 groundwater rise
+    # ==================================================
+
     plot_categorical_map(
         gdf=map_gdf,
         ax=axes[3],
-        column="vulnerability_type",
-        order=TYPE_ORDER,
-        colors=TYPE_COLORS
+        column="dtp_q75_q90_delta_bin",
+        order=DELTA_LABELS,
+        colors=DELTA_COLORS,
     )
 
-    type_counts = (
-        map_gdf["vulnerability_type"]
+    delta_counts = (
+        map_gdf["dtp_q75_q90_delta_bin"]
         .value_counts()
-        .reindex(TYPE_ORDER)
+        .reindex(DELTA_LABELS)
         .fillna(0)
     )
 
     add_circular_percent_legend(
         ax=axes[3],
-        counts=type_counts,
-        colors=TYPE_COLORS,
-        order=TYPE_ORDER,
-        title="Type",
-        loc=(0.56, 0.54, 0.45, 0.45)
+        counts=delta_counts,
+        colors=DELTA_COLORS,
+        order=DELTA_LABELS,
+        title="ΔGWL",
+        loc=(0.56, 0.54, 0.45, 0.45),
     )
 
-    # --------------------------------------------------
-    # Redraw boundaries
-    # --------------------------------------------------
+    # ==================================================
+    # Redraw Denmark + catchment boundaries
+    # ==================================================
+
     for ax in axes:
+
         dk_gdf.plot(
             ax=ax,
             facecolor="none",
             edgecolor="black",
             linewidth=0.35,
-            zorder=20
+            zorder=20,
         )
 
         catchment_polygons.boundary.plot(
@@ -765,77 +901,86 @@ def make_four_panel_sensitivity_map(
             edgecolor="black",
             linewidth=0.015,
             alpha=0.20,
-            zorder=21
+            zorder=21,
         )
 
-    # --------------------------------------------------
-    # Figure-level legends below maps
-    # --------------------------------------------------
+    # ==================================================
+    # Legends below each subplot
+    # ==================================================
+
     add_subplot_legend_below(
         ax=axes[0],
         labels=PEAK_LABELS,
         colors=EFFECT_COLORS_6,
         title="Peak effect",
         ncol=3,
-        y_offset=-0.035
+        y_offset=-0.035,
     )
-    
+
     add_subplot_legend_below(
         ax=axes[1],
         labels=VOLUME_LABELS,
         colors=EFFECT_COLORS_6,
         title="Volume effect",
         ncol=3,
-        y_offset=-0.035
+        y_offset=-0.035,
     )
-    
+
     add_subplot_legend_below(
         ax=axes[2],
-        labels=COMBINED_LABELS,
-        colors=COMBINED_COLORS,
-        title="Combined percentile",
+        labels=GWD_LABELS,
+        colors=GWD_COLORS,
+        title="Mean groundwater depth (m)",
         ncol=3,
-        y_offset=-0.035
+        y_offset=-0.035,
     )
-    
-    type_labels = TYPE_ORDER
-    
+
     add_subplot_legend_below(
         ax=axes[3],
-        labels=type_labels,
-        colors=TYPE_COLORS,
-        title="Type",
-        ncol=2,
-        y_offset=-0.035
+        labels=DELTA_LABELS,
+        colors=DELTA_COLORS,
+        title="Q75 to Q90 groundwater rise (m)",
+        ncol=3,
+        y_offset=-0.035,
     )
 
-    # type_handles = [
-    #     Patch(facecolor=TYPE_COLORS[label], edgecolor="none", label=label)
-    #     for label in TYPE_ORDER
-    # ]
-
-    # fig.legend(
-    #     handles=type_handles,
-    #     title="Dominant vulnerability type",
-    #     loc="lower center",
-    #     bbox_to_anchor=(0.5, -0.015),
-    #     ncol=len(TYPE_ORDER),
-    #     frameon=False,
-    #     fontsize=6.2,
-    #     title_fontsize=6.8
-    # )
+    # ==================================================
+    # Layout
+    # ==================================================
 
     plt.subplots_adjust(
         left=0.02,
         right=0.98,
         top=0.96,
         bottom=0.14,
-        wspace=0.02
+        wspace=0.02,
     )
-
+    
+    mpl.rcParams.update({
+        "font.family": "Times New Roman",
+        "font.size": 10,
+        "axes.titlesize": 10,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "legend.title_fontsize": 10,
+    })
+    
+    # ==================================================
+    # Save
+    # ==================================================
     if out_file is not None:
-        fig.savefig(out_file, dpi=600, bbox_inches="tight")
-        print(f"Saved map figure: {out_file}")
+
+        fig.savefig(
+            out_file,
+            dpi=600,
+            bbox_inches="tight",
+        )
+
+        print(
+            f"Saved map figure: {out_file}"
+        )
 
     return fig, axes
 
@@ -912,23 +1057,48 @@ if __name__ == "__main__":
     # -----------------------------
     # Join to catchment polygons
     # -----------------------------
-    map_gdf = catchment_polygons.merge(
-        sensitivity_df,
-        on="catch_id",
-        how="left"
-    )
-
+    # Groundwater characteristics needed for panels c and d
+    groundwater_info = all_catchments_df[[
+        "catch_id",
+        "dtp_mean",
+        "dtp_q75_value",
+        "dtp_q90_value",
+        "dtp_q75_q90_delta",]].copy()
+    
+    map_gdf = (catchments_gdf.merge(sensitivity_df,on="catch_id",how="left",).merge(
+        groundwater_info,on="catch_id",how="left",))
+    map_gdf["mean_gwd"] = -map_gdf["dtp_mean"]
+    print(map_gdf[["mean_gwd", "dtp_q75_q90_delta"]].describe())
+    
     # -----------------------------
     # Add effect bins and vulnerability type
     # -----------------------------
-    map_gdf = add_vulnerability_metrics_effect_bins(map_gdf)
+    # map_gdf = add_vulnerability_metrics_effect_bins(map_gdf)
+    map_gdf = add_effect_bins(map_gdf)
+    
+    from scipy.stats import spearmanr
+
+    rho_peak, p_peak = spearmanr(
+        map_gdf["dtp_q75_q90_delta"],
+        map_gdf["peak_q90_plus10"],
+        nan_policy="omit"
+    )
+    
+    rho_volume, p_volume = spearmanr(
+        map_gdf["dtp_q75_q90_delta"],
+        map_gdf["volume_q90_plus10"],
+        nan_policy="omit"
+    )
+    
+    print("Peak:", rho_peak, p_peak)
+    print("Volume:", rho_volume, p_volume)
 
     # -----------------------------
     # Make national sensitivity map
     # -----------------------------
     fig, axes = make_four_panel_sensitivity_map(
         map_gdf=map_gdf,
-        catchment_polygons=catchment_polygons,
+        catchment_polygons=catchments_gdf,
         dk_gdf=dk_gdf,
         out_file=OUT_MAP_FIG
     )

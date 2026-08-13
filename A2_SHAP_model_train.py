@@ -16,7 +16,6 @@ Rows:
 # ==================================================
 # Imports
 # ==================================================
-
 import os
 import numpy as np
 import pandas as pd
@@ -98,6 +97,18 @@ FEATURE_SETS = {
         "max_1d_precip_mm",
         "pre_event_precip_3d",
         "wcr",
+        "sdy",
+        "cdy",
+        "tem",
+        "pet",
+    ],
+    
+    "+ groundwater": [
+        "rain_duration_days",
+        "event_precip_mm",
+        "max_1d_precip_mm",
+        "pre_event_precip_3d",
+        "dtp",
         "sdy",
         "cdy",
         "tem",
@@ -203,10 +214,6 @@ def make_tabpfn_model(is_classification, random_state=42, fit_with_cache=False):
             )
         except TypeError:
             return TabPFNRegressor(device="cuda", fit_mode=fit_mode)
-
-
-import numpy as np
-import pandas as pd
 
 
 def subsample_balanced_by_catchment(
@@ -1002,6 +1009,30 @@ def compute_peak_occurrence_pdp_surfaces(
 
     pdp_results = {}
 
+    print("Computing peak: wcr × event_precip_mm")
+    pdp_results["peak_wcr_precip"] = compute_manual_2d_pdp(
+        model=peak_model,
+        X_ref=peak_X,
+        feature_x="wcr",
+        feature_y="event_precip_mm",
+        is_classification=False,
+        grid_resolution=grid_resolution,
+        sample_size=sample_size,
+        random_state=random_state,
+    )
+
+    print("Computing occurrence: wcr × event_precip_mm")
+    pdp_results["occurrence_wcr_precip"] = compute_manual_2d_pdp(
+        model=occ_model,
+        X_ref=occ_X,
+        feature_x="wcr",
+        feature_y="event_precip_mm",
+        is_classification=True,
+        grid_resolution=grid_resolution,
+        sample_size=sample_size,
+        random_state=random_state,
+    )
+    
     print("Computing peak: dtp × event_precip_mm")
     pdp_results["peak_dtp_precip"] = compute_manual_2d_pdp(
         model=peak_model,
@@ -1098,7 +1129,6 @@ def plot_2d_pdp_ax(
     pdp,
     xlabel,
     ylabel,
-    title,
     cmap="viridis",
     n_levels=14,
     contour_labels=True,
@@ -1127,7 +1157,7 @@ def plot_2d_pdp_ax(
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     # ax.set_title(title, fontsize=10)
-    ax.set_title(title,loc="left",fontweight="bold",)
+    # ax.set_title(title,loc="left",fontweight="bold",)
 
     return cf
 
@@ -1160,11 +1190,12 @@ def plot_stepwise_gain_half_violin_ax(
     """
     
     PREDICTOR_LABELS = {
-    "Rainfall": "R",
-    "Rainfall + meteo": "RM",
-    "+ antecedent P": "RMaP",
-    "+ soil water": "RMaPS",
-    "+ soil water + groundwater": "RMaPDG",}
+    "Rainfall": "P",
+    "Rainfall + meteo": "PM",
+    "+ antecedent P": "PMaP",
+    "+ soil water": "PMaPS",
+    "+ groundwater": "PMaPG",
+    "+ soil water + groundwater": "PMaPSG",}
     
     rng = np.random.default_rng(random_state)
 
@@ -1230,24 +1261,24 @@ def plot_stepwise_gain_half_violin_ax(
         )
 
         # Right-side half violin
-        parts = ax.violinplot(
-            vals,
-            positions=[i + 0.10],
-            widths=violin_width,
-            showmeans=False,
-            showmedians=False,
-            showextrema=False,
-        )
+        # parts = ax.violinplot(
+        #     vals,
+        #     positions=[i + 0.10],
+        #     widths=violin_width,
+        #     showmeans=False,
+        #     showmedians=False,
+        #     showextrema=False,
+        # )
 
-        for body in parts["bodies"]:
-            body.set_facecolor(color)
-            body.set_edgecolor("none")
-            body.set_alpha(0.28)
+        # for body in parts["bodies"]:
+        #     body.set_facecolor(color)
+        #     body.set_edgecolor("none")
+        #     body.set_alpha(0.28)
 
-            # Clip violin to right half
-            path = body.get_paths()[0]
-            verts = path.vertices
-            verts[:, 0] = np.maximum(verts[:, 0], i + 0.10)
+        #     # Clip violin to right half
+        #     path = body.get_paths()[0]
+        #     verts = path.vertices
+        #     verts[:, 0] = np.maximum(verts[:, 0], i + 0.10)
 
         # Median marker
         ax.scatter(
@@ -1261,16 +1292,16 @@ def plot_stepwise_gain_half_violin_ax(
         )
 
         # Mean ± SD as thin vertical interval, optional but useful
-        mean_val = np.nanmean(vals)
-        sd_val = np.nanstd(vals)
-        ax.plot(
-            [i, i],
-            [mean_val - sd_val, mean_val + sd_val],
-            color=color,
-            lw=1.0,
-            alpha=0.65,
-            zorder=4,
-        )
+        # mean_val = np.nanmean(vals)
+        # sd_val = np.nanstd(vals)
+        # ax.plot(
+        #     [i, i],
+        #     [mean_val - sd_val, mean_val + sd_val],
+        #     color=color,
+        #     lw=1.0,
+        #     alpha=0.65,
+        #     zorder=4,
+        # )
 
     # Median-connecting curve
     ax.plot(
@@ -1319,7 +1350,8 @@ def plot_peak_occurrence_pdp_figure_from_saved(
     pdp_results,
     predictor_order,
     out_file=None):
-    fig = plt.figure(figsize=(12, 10), dpi=1200)
+    
+    fig = plt.figure(figsize=(7.8, 7), dpi=1200)
 
     gs = GridSpec(
         nrows=3,
@@ -1355,7 +1387,7 @@ def plot_peak_occurrence_pdp_figure_from_saved(
         final_set_name=predictor_order[-1],
     )
     ax_gain_peak.set_title(
-        "(a)             Peak discharge",
+        "(a)                    Peak discharge",
         loc="left",
         fontweight="bold",
     )
@@ -1369,7 +1401,7 @@ def plot_peak_occurrence_pdp_figure_from_saved(
         final_set_name=predictor_order[-1],
     )
     ax_gain_occ.set_title(
-        "(b)             Flood occurance",
+        "(b)                    Flood occurance",
         loc="left",
         fontweight="bold",
     )
@@ -1377,9 +1409,9 @@ def plot_peak_occurrence_pdp_figure_from_saved(
     # Row 2: dtp × precipitation
     cf1 = plot_2d_pdp_ax(
         ax=ax_pdp_rain_peak,
-        pdp=pdp_results["peak_dtp_precip"],
-        xlabel="Relative groundwater depth (m)",
-        ylabel="Event precipitation (mm)",
+        pdp=pdp_results["peak_wcr_precip"], #"peak_wcr_precip"
+        xlabel= "Soil moisture", #, "Relative groundwater depth (m)", #"Soil moisture",
+        ylabel= "Event precipitation (mm)",
         title="(c)", # PDP: groundwater × event precipitation
         cmap="YlOrRd",
     )
@@ -1388,14 +1420,14 @@ def plot_peak_occurrence_pdp_figure_from_saved(
 
     cf2 = plot_2d_pdp_ax(
         ax=ax_pdp_rain_occ,
-        pdp=pdp_results["occurrence_dtp_precip"],
-        xlabel="Relative groundwater depth (m)", #Groundwater anomaly, dtp\nhigher = shallower groundwater
+        pdp=pdp_results["occurrence_wcr_precip"], #"occurrence_dtp_precip"
+        xlabel= "Soil moisture", # "Relative groundwater depth (m)", #"Soil moisture",
         ylabel="Event precipitation (mm)",
         title="(d)", # PDP: groundwater × event precipitation
         cmap="YlGnBu",
     )
     cbar2 = fig.colorbar(cf2, ax=ax_pdp_rain_occ, fraction=0.046, pad=0.02)
-    cbar2.set_label("Predicted flood probability")
+    cbar2.set_label("Predicted flood occurrence")
 
     # Row 3: dtp × soil water
     cf3 = plot_2d_pdp_ax(
@@ -1418,7 +1450,7 @@ def plot_peak_occurrence_pdp_figure_from_saved(
         cmap="YlGnBu",
     )
     cbar4 = fig.colorbar(cf4, ax=ax_pdp_wcr_occ, fraction=0.046, pad=0.02)
-    cbar4.set_label("Predicted flood probability")
+    cbar4.set_label("Predicted flood occurrence")
     for ax in [
     # ax_gain_peak,
     # ax_gain_occ,
@@ -1447,6 +1479,449 @@ def plot_peak_occurrence_pdp_figure_from_saved(
     if out_file is not None:
         fig.savefig(out_file, dpi=1200, bbox_inches="tight")
         print(f"Saved figure: {out_file}")
+
+    return fig
+
+def plot_custom_shap_beeswarm_ax(
+    explanation,
+    ax,
+    short_labels=None,
+    max_display=10,
+    point_size=11,
+    alpha=0.55,
+    random_state=42,
+):
+    """
+    Custom SHAP beeswarm-like panel that works inside an existing axis.
+    """
+    rng = np.random.default_rng(random_state)
+
+    shap_values = np.asarray(explanation.values)
+    feature_values = np.asarray(explanation.data)
+    feature_names = np.asarray(explanation.feature_names)
+
+    if shap_values.ndim != 2:
+        raise ValueError(
+            f"Expected 2-D SHAP values; obtained {shap_values.shape}"
+        )
+
+    if feature_values.shape != shap_values.shape:
+        raise ValueError(
+            "SHAP data and values have inconsistent shapes: "
+            f"{feature_values.shape} versus {shap_values.shape}"
+        )
+
+    importance = np.nanmean(np.abs(shap_values), axis=0)
+    order = np.argsort(importance)[::-1][:max_display]
+
+    # Reverse so the most important feature appears at the top
+    order = order[::-1]
+
+    scatter_for_colorbar = None
+
+    for row, feature_idx in enumerate(order):
+        sv = shap_values[:, feature_idx]
+        fv = feature_values[:, feature_idx]
+
+        valid = np.isfinite(sv) & np.isfinite(fv)
+        sv = sv[valid]
+        fv = fv[valid]
+
+        if len(sv) == 0:
+            continue
+
+        # Robust normalization of feature values for colour
+        q_low, q_high = np.nanquantile(fv, [0.05, 0.95])
+
+        if q_high > q_low:
+            color_value = np.clip(
+                (fv - q_low) / (q_high - q_low),
+                0,
+                1,
+            )
+        else:
+            color_value = np.full(len(fv), 0.5)
+
+        jitter = rng.normal(
+            loc=0,
+            scale=0.10,
+            size=len(sv),
+        )
+
+        scatter_for_colorbar = ax.scatter(
+            sv,
+            row + jitter,
+            c=color_value,
+            cmap="coolwarm",
+            vmin=0,
+            vmax=1,
+            s=point_size,
+            alpha=alpha,
+            linewidths=0,
+            rasterized=True,
+        )
+
+    labels = []
+    for feature_idx in order:
+        feature = feature_names[feature_idx]
+        labels.append(
+            short_labels.get(feature, feature)
+            if short_labels is not None
+            else feature
+        )
+
+    ax.set_yticks(np.arange(len(order)))
+    ax.set_yticklabels(labels)
+    ax.axvline(0, color="0.35", linewidth=0.8)
+    ax.grid(axis="x", alpha=0.20)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_xlabel("SHAP value")
+
+    return scatter_for_colorbar
+
+def plot_peak_occurrence_custom_shap(
+    peak_result,
+    occurrence_result,
+    short_labels,
+    out_file=None,
+    max_display=100,
+):
+    peak_exp = peak_result["shap"]["shap_values"]
+    occ_exp = occurrence_result["shap"]["shap_values"]
+
+    fig, axes = plt.subplots(
+        1,
+        2,
+        figsize=(7.08, 3.7),
+        constrained_layout=True,dpi=1200
+    )
+
+    sc1 = plot_custom_shap_beeswarm_ax(
+        explanation=peak_exp,
+        ax=axes[0],
+        short_labels=short_labels,
+        max_display=max_display,
+        random_state=42,
+    )
+
+    axes[0].set_title(
+        "(a) Peak discharge",
+        loc="left",
+        fontweight="bold",
+    )
+
+    sc2 = plot_custom_shap_beeswarm_ax(
+        explanation=occ_exp,
+        ax=axes[1],
+        short_labels=short_labels,
+        max_display=max_display,
+        random_state=43,
+    )
+
+    axes[1].set_title(
+        "(b) Flood occurrence",
+        loc="left",
+        fontweight="bold",
+    )
+
+    # One common feature-value colour bar
+    cbar = fig.colorbar(
+        sc2,
+        ax=axes,
+        fraction=0.025,
+        pad=0.02,
+    )
+    cbar.set_ticks([0, 1])
+    cbar.set_ticklabels(["Low", "High"])
+    cbar.set_label("Feature value")
+
+    if out_file is not None:
+        fig.savefig(
+            out_file,
+            dpi=600,
+            bbox_inches="tight",
+        )
+        print(f"Saved figure: {out_file}")
+
+    return fig
+
+
+def plot_single_target_pdp_figure_from_saved(
+    result,
+    pdp_results,
+    predictor_order,
+    target_type="peak",     # "peak" or "occurrence"
+    out_file=None,
+):
+    """
+    Plot predictive performance and three 2-D PDP surfaces
+    for ONE target only.
+
+    Layout
+    ------
+    (a) Stepwise predictive performance
+    (b) Soil moisture × event precipitation
+    (c) Groundwater × event precipitation
+    (d) Groundwater × soil moisture
+
+    Parameters
+    ----------
+    result : dict
+        Either all_results["peak"] or all_results["occurrence"].
+
+    pdp_results : dict
+        Saved output from compute_peak_occurrence_pdp_surfaces().
+
+    predictor_order : list
+        Predictor sets shown in the stepwise performance plot.
+
+    target_type : str
+        "peak" or "occurrence".
+
+    out_file : str or Path, optional
+        Output figure path.
+    """
+
+    # ==================================================
+    # Target-dependent settings
+    # ==================================================
+
+    if target_type == "peak":
+
+        metric_col = "R2"
+        metric_ylabel = "R²"
+
+        pdp_wcr_precip = pdp_results["peak_wcr_precip"]
+        pdp_dtp_precip = pdp_results["peak_dtp_precip"]
+        pdp_dtp_wcr = pdp_results["peak_dtp_wcr"]
+
+        cmap = "YlOrRd"
+
+        cbar_label = "Predicted log peak discharge"
+
+        figure_title = "Peak discharge"
+
+    elif target_type == "occurrence":
+
+        metric_col = "ROC_AUC"
+        metric_ylabel = "ROC-AUC"
+
+        pdp_wcr_precip = pdp_results["occurrence_wcr_precip"]
+        pdp_dtp_precip = pdp_results["occurrence_dtp_precip"]
+        pdp_dtp_wcr = pdp_results["occurrence_dtp_wcr"]
+
+        cmap = "YlGnBu"
+
+        cbar_label = "Predicted flood probability"
+
+        figure_title = "Flood occurrence"
+
+    else:
+
+        raise ValueError(
+            "target_type must be either 'peak' or 'occurrence'"
+        )
+
+    # ==================================================
+    # Figure
+    # ==================================================
+
+    fig = plt.figure(
+        figsize=(7.08, 5.0),
+        dpi=1200,
+    )
+
+    gs = GridSpec(
+        nrows=2,
+        ncols=2,
+        figure=fig,
+        height_ratios=[1, 1],
+        width_ratios=[1, 1],
+        hspace=0.20,
+        wspace=0.30,
+    )
+
+    # Each subplot spans both columns
+    ax_gain = fig.add_subplot(gs[0, 0])
+
+    ax_wcr_precip = fig.add_subplot(gs[0, 1])
+
+    ax_dtp_precip = fig.add_subplot(gs[1, 0])
+
+    ax_dtp_wcr = fig.add_subplot(gs[1, 1])
+
+    # ==================================================
+    # (a) Stepwise predictive performance
+    # ==================================================
+    plot_stepwise_gain_half_violin_ax(
+        results_df=result["results_df"],
+        ax=ax_gain,
+        predictor_order=predictor_order,
+        metric_col=metric_col,
+        ylabel=metric_ylabel,
+        final_set_name=predictor_order[-1],
+    )
+
+    # ax_gain.set_title(f"(a)",loc="left",fontweight="bold")
+    plt.text(0.1, 0.95, '(a)', 
+             horizontalalignment='center',verticalalignment='center',
+             transform=ax_gain.transAxes, 
+             fontweight="bold")
+
+    # ==================================================
+    # (b) Soil moisture × precipitation
+    # ==================================================
+    cf1 = plot_2d_pdp_ax(
+        ax=ax_wcr_precip,
+        pdp=pdp_wcr_precip,
+        xlabel="Soil moisture",
+        ylabel="Event precipitation (mm)",
+        cmap=cmap,
+    )
+    plt.text(0.1, 0.95, '(b)', 
+             horizontalalignment='center',verticalalignment='center',
+             transform=ax_wcr_precip.transAxes, 
+             fontweight="bold")
+
+    # cbar1 = fig.colorbar(
+    #     cf1,
+    #     ax=ax_wcr_precip,
+    #     fraction=0.025,
+    #     pad=0.02,
+    # )
+
+    # cbar1.set_label(
+    #     cbar_label
+    # )
+
+    # ==================================================
+    # (c) Groundwater × precipitation
+    # ==================================================
+    cf2 = plot_2d_pdp_ax(
+        ax=ax_dtp_precip,
+        pdp=pdp_dtp_precip,
+        xlabel="Relative groundwater depth (m)",
+        ylabel="Event precipitation (mm)",
+        cmap=cmap,
+    )
+    plt.text(0.1, 0.95, '(c)', 
+             horizontalalignment='center',verticalalignment='center',
+             transform=ax_dtp_precip.transAxes, 
+             fontweight="bold")
+
+    # cbar2 = fig.colorbar(
+    #     cf2,
+    #     ax=ax_dtp_precip,
+    #     fraction=0.025,
+    #     pad=0.02,
+    # )
+
+    # cbar2.set_label(
+    #     cbar_label
+    # )
+
+    # ==================================================
+    # (d) Groundwater × soil moisture
+    # ==================================================
+    cf3 = plot_2d_pdp_ax(
+        ax=ax_dtp_wcr,
+        pdp=pdp_dtp_wcr,
+        xlabel="Relative groundwater depth (m)",
+        ylabel="Soil moisture",
+        cmap=cmap,
+    )
+    plt.text(0.1, 0.95, '(d)', 
+             horizontalalignment='center',verticalalignment='center',
+             transform=ax_dtp_wcr.transAxes, 
+             fontweight="bold")
+    # cbar3 = fig.colorbar(
+    #     cf3,
+    #     ax=ax_dtp_wcr,
+    #     fraction=0.025,
+    #     pad=0.02,
+    # )
+
+    # cbar3.set_label(
+    #     cbar_label
+    # )
+
+    # ==================================================
+    # Tick formatting
+    # ==================================================
+
+    for ax in [
+        ax_wcr_precip,
+        ax_dtp_precip,
+        ax_dtp_wcr,
+    ]:
+        apply_clean_tick_format(ax)
+
+    # ==================================================
+    # Align y labels
+    # ==================================================
+
+    fig.canvas.draw()
+
+    for ax in [
+        ax_gain,
+        ax_wcr_precip,
+        ax_dtp_precip,
+        ax_dtp_wcr,
+    ]:
+        ax.yaxis.set_label_coords(-0.18,0.5,)
+
+    # ==================================================
+    # Save
+    # ==================================================
+    plt.rcParams.update({
+        # Font
+        "font.family": "serif",
+        "font.serif": ["Times New Roman"],
+    
+        # Main text
+        "font.size": 8,
+    
+        # Axes
+        "axes.labelsize": 8,
+        "axes.titlesize": 8,
+        "axes.titleweight": "bold",
+        "axes.linewidth": 0.7,
+    
+        # Ticks
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "xtick.major.width": 0.7,
+        "ytick.major.width": 0.7,
+        "xtick.major.size": 3,
+        "ytick.major.size": 3,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+    
+        # Legend
+        "legend.fontsize": 7,
+        "legend.title_fontsize": 8,
+        "legend.frameon": False,
+    
+        # Lines
+        "lines.linewidth": 1.0,
+        "lines.markersize": 4,
+    
+        # Saving
+        "savefig.dpi": 600,
+    })
+    
+    if out_file is not None:
+
+        fig.savefig(
+            out_file,
+            dpi=1200,
+            bbox_inches="tight",
+        )
+
+        print(
+            f"Saved figure: {out_file}"
+        )
 
     return fig
 
@@ -1492,14 +1967,14 @@ if __name__ == "__main__":
                 target_info=target_info,
                 feature_cols=FINAL_FEATURES,
                 group_col="catch_id",
-                out_file=f"shap_result_{SCALE}_{target_type}.pkl",
+                out_file=f"../results/shap_result_{SCALE}_{target_type}.pkl",
                 max_train_size=MAX_TRAIN_SIZE_PER_FOLD,
                 shap_background_size=SHAP_BACKGROUND_SIZE,
                 shap_explain_size=SHAP_EXPLAIN_SIZE,
                 random_state=RANDOM_STATE,
             )
         else:
-            with open(f"shap_result_{SCALE}_{target_type}.pkl", "rb") as f:
+            with open(f"../results/shap_result_{SCALE}_{target_type}.pkl", "rb") as f:
                 shap_result = pickle.load(f)
 
         all_results[target_type] = {
@@ -1519,24 +1994,41 @@ if __name__ == "__main__":
             grid_resolution=25,
             sample_size=1200,
             random_state=RANDOM_STATE,
-            out_file=f"pdp_surfaces_{SCALE}.pkl",
+            out_file=f"../results/pdp_surfaces_{SCALE}.pkl",
         )
     else:
-        with open(f"pdp_surfaces_{SCALE}.pkl", "rb") as f:
+        with open(f"../results/pdp_surfaces_{SCALE}.pkl", "rb") as f:
             pdp_results = pickle.load(f)
 
     all_results["peak"]["pdp"] = pdp_results
     all_results["occurrence"]["pdp"] = pdp_results
 
     # --------------------------------------------------
-    # Step 3: plot
+    # Step 3: plot PDP
     # --------------------------------------------------
+    fig_peak = plot_single_target_pdp_figure_from_saved(
+    result=all_results["peak"],
+    pdp_results=pdp_results,
+    predictor_order=PREDICTOR_ORDER[1:],
+    target_type="peak",
+    out_file=f"../results/predictive_compounding_peak_{SCALE}.png",)
+    plt.show()
+
     fig = plot_peak_occurrence_pdp_figure_from_saved(
         peak_result=all_results["peak"],
         occurrence_result=all_results["occurrence"],
         pdp_results=pdp_results,
         predictor_order=PREDICTOR_ORDER[1:],
-        out_file=f"predictive_compounding_pdp_{SCALE}.png",
-    )
-
+        out_file=f"../results/predictive_compounding_pdp_{SCALE}.png",)
+    plt.show()
+    
+    # --------------------------------------------------
+    # Step 3: plot SHAP
+    # --------------------------------------------------
+    fig_shap = plot_peak_occurrence_custom_shap(
+    peak_result=all_results["peak"],
+    occurrence_result=all_results["occurrence"],
+    short_labels=SHORT_LABELS,
+    out_file=f"../results/shap_peak_occurrence_{SCALE}.png",
+    max_display=50) 
     plt.show()
