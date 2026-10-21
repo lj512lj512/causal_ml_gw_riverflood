@@ -1,10 +1,10 @@
-# Folders to exclude
-results/
-figures/
-data/
-
-# File types to exclude
-*.nc
-*.pdf
 __pycache__/
+*.py[cod]
 .ipynb_checkpoints/
+.pytest_cache/
+.venv/
+.env
+data/
+results/
+*.joblib
+*.pkl
